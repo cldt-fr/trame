@@ -83,10 +83,13 @@ struct CreateSessionSheet: View {
                         }
 
                         Toggle("Join talkie-walkie mesh", isOn: $joinMesh)
+                        Text("Lets your Claude sessions talk to each other. Example: a “dev” agent finishes a feature and asks the “reviewer” agent to check it — directly, from session to session, without you copy-pasting anything.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         if joinMesh {
                             TextField("Mesh role", text: $meshRole, prompt: Text("backend, reviewer, tester…"))
                                 .fontDesign(.monospaced)
-                            Text("Other agents address this session by its role. Port, secret and peers are wired automatically.")
+                            Text("The role is this session's name on the walkie-talkie: other agents will call it with “ask the \(meshRole.isEmpty ? "reviewer" : meshRole) to…”. Trame wires the connection (port, secret, peer list) automatically.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
