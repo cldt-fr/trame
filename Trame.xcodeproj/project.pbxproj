@@ -6,6 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7714A1000000000000000007 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000003 /* SwiftTerm */; };
+		7714A1000000000000000008 /* TrameDaemon in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000004 /* TrameDaemon */; };
+		7714A1000000000000000009 /* TrameClient in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000005 /* TrameClient */; };
+		7714A100000000000000000A /* TrameProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000006 /* TrameProtocol */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		E6F076FE3019EBD2008D8CE7 /* Trame.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Trame.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +30,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7714A1000000000000000007 /* SwiftTerm in Frameworks */,
+				7714A1000000000000000008 /* TrameDaemon in Frameworks */,
+				7714A1000000000000000009 /* TrameClient in Frameworks */,
+				7714A100000000000000000A /* TrameProtocol in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +76,10 @@
 			);
 			name = Trame;
 			packageProductDependencies = (
+				7714A1000000000000000003 /* SwiftTerm */,
+				7714A1000000000000000004 /* TrameDaemon */,
+				7714A1000000000000000005 /* TrameClient */,
+				7714A1000000000000000006 /* TrameProtocol */,
 			);
 			productName = Trame;
 			productReference = E6F076FE3019EBD2008D8CE7 /* Trame.app */;
@@ -96,6 +111,10 @@
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E6F076FF3019EBD2008D8CE7 /* Products */;
+			packageReferences = (
+				7714A1000000000000000001 /* XCLocalSwiftPackageReference "TrameCore" */,
+				7714A1000000000000000002 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -254,7 +273,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 79FY5MN895;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -286,7 +305,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 79FY5MN895;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -310,6 +329,44 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7714A1000000000000000001 /* XCLocalSwiftPackageReference "TrameCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = TrameCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7714A1000000000000000002 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = exactVersion;
+				version = 1.11.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7714A1000000000000000003 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7714A1000000000000000002 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		7714A1000000000000000004 /* TrameDaemon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameDaemon;
+		};
+		7714A1000000000000000005 /* TrameClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameClient;
+		};
+		7714A1000000000000000006 /* TrameProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		E6F076F93019EBD2008D8CE7 /* Build configuration list for PBXProject "Trame" */ = {

@@ -1,32 +1,36 @@
-//
-//  TrameApp.swift
-//  Trame
-//
-//  Created by Clément on 29/07/2026.
-//
-
 import SwiftUI
-import SwiftData
+import TrameDaemon
+import TrameProtocol
 
+// The app binary doubles as the daemon (spec §4.2): launched with --daemon it
+// runs trame-core headless, so sessions survive quitting the window.
 @main
-struct TrameApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+struct TrameLauncher {
+    static func main() {
+        if CommandLine.arguments.contains("--daemon") {
+            Daemon(socketPath: TramePaths.socketPath).run()
+        } else {
+            TrameApp.main()
         }
-    }()
+    }
+}
+
+struct TrameApp: App {
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(model)
+                .task { await model.start() }
         }
-        .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Nouvelle session…") {
+                    model.showCreateSheet = true
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+            }
+        }
     }
 }
