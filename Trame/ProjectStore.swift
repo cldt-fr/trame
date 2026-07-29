@@ -9,6 +9,8 @@ struct Project: Codable, Identifiable, Hashable {
     var lastCommand: String?
     /// Derniers serveurs MCP attachés, ré-appliqués par défaut (F1.9/F3).
     var lastMCPServerIDs: [UUID]?
+    /// Dernier preset de permissions utilisé (F8).
+    var lastPermissionPreset: String?
 }
 
 enum ProjectStore {

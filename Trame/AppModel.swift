@@ -291,7 +291,13 @@ final class AppModel: ObservableObject {
     /// Crée une session dans un projet : sur le repo, ou dans un worktree créé
     /// à la volée (F1.2). Mémorise la commande comme défaut du projet (F1.9).
     func createSession(project: Project, destination: SessionDestination, command: String,
-                       mcpServerIDs: [UUID] = [], meshRole: String? = nil) async {
+                       mcpServerIDs: [UUID] = [], meshRole: String? = nil,
+                       permissionPreset: PermissionPreset = .prudent) async {
+        // F8.2 — Autonomous is only allowed inside an isolated worktree.
+        if permissionPreset == .autonomous, case .repo = destination {
+            lastError = "Autonomous mode is only available for worktree sessions."
+            return
+        }
         let cwd: String
         switch destination {
         case .repo:
@@ -320,6 +326,7 @@ final class AppModel: ObservableObject {
         if var updated = projects.first(where: { $0.id == project.id }) {
             updated.lastCommand = command.trimmingCharacters(in: .whitespaces)
             updated.lastMCPServerIDs = mcpServerIDs
+            updated.lastPermissionPreset = permissionPreset.rawValue
             projects = projects.map { $0.id == updated.id ? updated : $0 }
             ProjectStore.save(projects)
         }
@@ -331,6 +338,18 @@ final class AppModel: ObservableObject {
         var sessionEnv: [String: String] = [:]
         var servers = mcpServers.filter { mcpServerIDs.contains($0.id) }
         let isClaudeCommand = effectiveCommand == "claude" || effectiveCommand.hasPrefix("claude ")
+
+        if permissionPreset != .prudent {
+            if isClaudeCommand {
+                let allowlist = UserDefaults.standard.string(forKey: "standardAllowlist") ?? PermissionPreset.defaultAllowlist
+                let flags = permissionPreset.flags(allowlist: allowlist)
+                if !flags.isEmpty {
+                    effectiveCommand += " " + flags
+                }
+            } else {
+                lastError = "Permission presets only apply when the command starts with “claude”."
+            }
+        }
 
         // Mesh auto-provisioning (F4.1): allocate a port, derive a unique
         // role, wire PEERS to the current members and add the talkie-walkie

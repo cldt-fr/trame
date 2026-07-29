@@ -266,6 +266,12 @@ struct SessionRow: View {
                             .foregroundStyle(Color.teal)
                             .labelStyle(.titleAndIcon)
                     }
+                    if PermissionPreset.isAutonomous(session) {
+                        Image(systemName: "shield.slash.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color.orange)
+                            .help("Autonomous: permission prompts are skipped")
+                    }
                 }
                 HStack(spacing: 4) {
                     if isWorktree {
@@ -310,6 +316,12 @@ struct SessionHeader: View {
                 .frame(width: 8, height: 8)
             Text(session.name)
                 .font(.headline)
+            if PermissionPreset.isAutonomous(session) {
+                Label("Autonomous", systemImage: "shield.slash.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
+                    .help("Permission prompts are skipped in this session")
+            }
             if model.isWorktreeSession(session) {
                 Label((session.cwd as NSString).lastPathComponent, systemImage: "arrow.triangle.branch")
                     .font(.caption)
