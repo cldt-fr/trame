@@ -285,8 +285,12 @@ final class AppModel: ObservableObject {
         if let accountID, let configDir = AccountStore.configDir(for: accountID) {
             env["CLAUDE_CONFIG_DIR"] = configDir
         }
+        let peerRoles = meshMembers.filter { $0.id != member.id }.map(\.role)
 
-        // Remove the old session directly (keep the mesh membership).
+        // Remove the old session; the guard set keeps the membership alive
+        // while no session carries this id.
+        restartingMeshIDs.insert(member.id)
+        defer { restartingMeshIDs.remove(member.id) }
         _ = try? await client.call(.removeSession(id: member.id))
         let created = await createSession(cwd: session.cwd, command: cmdString,
                                           name: session.name, env: env, accountID: accountID)
@@ -294,13 +298,11 @@ final class AppModel: ObservableObject {
             leaveMesh(sessionID: member.id)
             return
         }
-        meshMembers = meshMembers.map { m in
-            guard m.id == member.id else { return m }
-            var updated = m
-            updated.id = created.id
-            updated.peerRolesAtLaunch = meshMembers.filter { $0.id != member.id }.map(\.role)
-            return updated
-        }
+        var updated = member
+        updated.id = created.id
+        updated.peerRolesAtLaunch = peerRoles
+        meshMembers.removeAll { $0.id == member.id || $0.id == created.id }
+        meshMembers.append(updated)
         MeshStore.save(meshMembers)
         await refresh()
     }
@@ -310,10 +312,15 @@ final class AppModel: ObservableObject {
         MeshStore.save(meshMembers)
     }
 
+    /// Session ids being restarted right now; their mesh membership must
+    /// survive the remove→recreate window (the periodic refresh would
+    /// otherwise prune them mid-flight and lose the mesh identity).
+    private var restartingMeshIDs = Set<String>()
+
     /// Drops members whose session no longer exists.
     private func pruneMeshMembers() {
         let alive = Set(sessions.map(\.id))
-        let pruned = meshMembers.filter { alive.contains($0.id) }
+        let pruned = meshMembers.filter { alive.contains($0.id) || restartingMeshIDs.contains($0.id) }
         if pruned.count != meshMembers.count {
             meshMembers = pruned
             MeshStore.save(meshMembers)
