@@ -182,6 +182,11 @@ private struct MeshGraphView: View {
             if session != nil {
                 Button("Open Session") { model.focusSession(member.id) }
             }
+            if stale {
+                Button("Restart with Updated Peers") {
+                    Task { await model.restartMeshMemberWithUpdatedPeers(member) }
+                }
+            }
             Button("Leave Mesh") { model.leaveMesh(sessionID: member.id) }
         }
         .help(stale

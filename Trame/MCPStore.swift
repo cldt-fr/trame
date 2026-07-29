@@ -71,6 +71,45 @@ nonisolated enum MCPStore {
         "mcp.\(serverID.uuidString).\(key)"
     }
 
+    /// Rewrites the PEERS value inside an existing launch config and resolves
+    /// every `${VAR}` secret reference back from the Keychain, so a mesh
+    /// session can be restarted with the current topology (F4.6 workaround).
+    static func updatePeersAndResolveEnv(configPath: String, peers: String,
+                                         servers: [MCPServer]) -> [String: String]? {
+        guard let data = FileManager.default.contents(atPath: configPath),
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var mcpServers = root["mcpServers"] as? [String: Any] else { return nil }
+
+        if var talkie = mcpServers["talkie-walkie"] as? [String: Any],
+           var env = talkie["env"] as? [String: String] {
+            env["PEERS"] = peers
+            talkie["env"] = env
+            mcpServers["talkie-walkie"] = talkie
+            root["mcpServers"] = mcpServers
+            guard let updated = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]),
+                  (try? updated.write(to: URL(fileURLWithPath: configPath), options: .atomic)) != nil else {
+                return nil
+            }
+        }
+
+        var sessionEnv: [String: String] = [:]
+        for (name, entryAny) in mcpServers {
+            guard let entry = entryAny as? [String: Any],
+                  let env = entry["env"] as? [String: String] else { continue }
+            let serverID: UUID? = name == "talkie-walkie"
+                ? MeshStore.serverID
+                : servers.first { $0.name == name }?.id
+            for (key, value) in env where value.hasPrefix("${") && value.hasSuffix("}") {
+                let varName = String(value.dropFirst(2).dropLast(1))
+                if let serverID,
+                   let secret = KeychainStore.get(account: secretAccount(serverID: serverID, key: key)) {
+                    sessionEnv[varName] = secret
+                }
+            }
+        }
+        return sessionEnv
+    }
+
     /// Builds the launch config for the selected servers, resolving secrets
     /// from the Keychain, and writes it under Application Support (never in
     /// the user's repo). Returns nil when no server is selected.

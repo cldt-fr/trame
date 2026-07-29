@@ -253,6 +253,58 @@ final class AppModel: ObservableObject {
         return currentPeers != Set(member.peerRolesAtLaunch)
     }
 
+    /// One-click fix for the "restart for peers" badge: rewrites PEERS in the
+    /// session's existing --mcp-config file, recreates the session with the
+    /// same command/account, and transfers the mesh identity to it.
+    func restartMeshMemberWithUpdatedPeers(_ member: MeshMember) async {
+        guard let session = sessions.first(where: { $0.id == member.id }),
+              let cmdString = session.command.last else { return }
+
+        guard let regex = try? NSRegularExpression(pattern: #"--mcp-config "([^"]+)""#),
+              let match = regex.firstMatch(in: cmdString, range: NSRange(cmdString.startIndex..., in: cmdString)),
+              let pathRange = Range(match.range(at: 1), in: cmdString) else {
+            lastError = "Could not locate this session's mcp-config file."
+            return
+        }
+        let configPath = String(cmdString[pathRange])
+
+        let peers = meshMembers
+            .filter { $0.id != member.id }
+            .map { "\($0.role)=127.0.0.1:\($0.port)" }
+            .joined(separator: ",")
+        let servers = mcpServers
+        let env = await Task.detached {
+            MCPStore.updatePeersAndResolveEnv(configPath: configPath, peers: peers, servers: servers)
+        }.value
+        guard var env else {
+            lastError = "Could not update the mesh configuration."
+            return
+        }
+
+        let accountID = account(for: session)?.id
+        if let accountID, let configDir = AccountStore.configDir(for: accountID) {
+            env["CLAUDE_CONFIG_DIR"] = configDir
+        }
+
+        // Remove the old session directly (keep the mesh membership).
+        _ = try? await client.call(.removeSession(id: member.id))
+        let created = await createSession(cwd: session.cwd, command: cmdString,
+                                          name: session.name, env: env, accountID: accountID)
+        guard let created else {
+            leaveMesh(sessionID: member.id)
+            return
+        }
+        meshMembers = meshMembers.map { m in
+            guard m.id == member.id else { return m }
+            var updated = m
+            updated.id = created.id
+            updated.peerRolesAtLaunch = meshMembers.filter { $0.id != member.id }.map(\.role)
+            return updated
+        }
+        MeshStore.save(meshMembers)
+        await refresh()
+    }
+
     func leaveMesh(sessionID: String) {
         meshMembers.removeAll { $0.id == sessionID }
         MeshStore.save(meshMembers)
