@@ -655,6 +655,47 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Recreates a session with the same command, cwd, name and account —
+    /// works for exited sessions ("Start") and running ones ("Restart").
+    /// Mesh members are routed through the peers-aware restart.
+    func restartSession(_ session: SessionInfo) async {
+        if let member = meshMember(for: session.id) {
+            await restartMeshMemberWithUpdatedPeers(member)
+            return
+        }
+        let cmdString = Self.commandString(from: session.command)
+        let servers = mcpServers
+        var env: [String: String] = [:]
+        if let configPath = Self.mcpConfigPath(in: cmdString) {
+            env = await Task.detached {
+                MCPStore.resolveEnv(configPath: configPath, servers: servers)
+            }.value
+        }
+        let accountID = account(for: session)?.id
+        if let accountID, let dir = AccountStore.configDir(for: accountID) {
+            env["CLAUDE_CONFIG_DIR"] = dir
+        }
+        _ = try? await client.call(.removeSession(id: session.id))
+        await createSession(cwd: session.cwd, command: cmdString,
+                            name: session.name, env: env, accountID: accountID)
+    }
+
+    /// Recovers the user-level command from the stored argv
+    /// ([shell, "-l", "-c", cmd] or [shell, "-l"] for an interactive shell).
+    static func commandString(from argv: [String]) -> String {
+        if argv.count >= 2, argv[argv.count - 2] == "-c", let last = argv.last {
+            return last
+        }
+        return ""
+    }
+
+    static func mcpConfigPath(in command: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: #"--mcp-config "([^"]+)""#),
+              let match = regex.firstMatch(in: command, range: NSRange(command.startIndex..., in: command)),
+              let range = Range(match.range(at: 1), in: command) else { return nil }
+        return String(command[range])
+    }
+
     func renameSession(_ id: String, to name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }

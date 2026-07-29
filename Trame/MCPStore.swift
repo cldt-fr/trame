@@ -91,7 +91,20 @@ nonisolated enum MCPStore {
                 return nil
             }
         }
+        return resolveEnv(mcpServers: mcpServers, servers: servers)
+    }
 
+    /// Rebuilds the session environment for an existing launch config by
+    /// resolving its `${VAR}` secret references from the Keychain — used when
+    /// restarting a session.
+    static func resolveEnv(configPath: String, servers: [MCPServer]) -> [String: String] {
+        guard let data = FileManager.default.contents(atPath: configPath),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let mcpServers = root["mcpServers"] as? [String: Any] else { return [:] }
+        return resolveEnv(mcpServers: mcpServers, servers: servers)
+    }
+
+    private static func resolveEnv(mcpServers: [String: Any], servers: [MCPServer]) -> [String: String] {
         var sessionEnv: [String: String] = [:]
         for (name, entryAny) in mcpServers {
             guard let entry = entryAny as? [String: Any],

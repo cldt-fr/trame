@@ -194,6 +194,9 @@ struct ContentView: View {
                    account: model.account(for: session))
             .tag(session.id)
             .contextMenu {
+                Button(session.isRunning ? "Restart" : "Start") {
+                    Task { await model.restartSession(session) }
+                }
                 Button("Rename…") { beginRename(session) }
                 if session.isRunning {
                     Button("Stop") {
@@ -501,7 +504,17 @@ struct SessionHeader: View {
             .labelsHidden()
             .fixedSize()
 
+            if !session.isRunning {
+                Button("Start") {
+                    Task { await model.restartSession(session) }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
             Menu {
+                Button(session.isRunning ? "Restart" : "Start") {
+                    Task { await model.restartSession(session) }
+                }
                 Button("Rename…") {
                     renameText = session.name
                     showRename = true
