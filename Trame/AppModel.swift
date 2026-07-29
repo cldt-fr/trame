@@ -19,6 +19,9 @@ enum SessionDestination: Hashable {
 
 @MainActor
 final class AppModel: ObservableObject {
+    /// Sidebar selection value for the in-window Agent Office view.
+    static let officeSelectionID = "___office___"
+
     @Published var sessions: [SessionInfo] = []
     @Published var selectedSessionID: String?
     @Published var daemonConnected = false
@@ -120,7 +123,8 @@ final class AppModel: ObservableObject {
         guard client.isConnected else { return }
         if case .sessions(let list) = try? await client.call(.listSessions) {
             sessions = list
-            if selectedSessionID == nil || !list.contains(where: { $0.id == selectedSessionID }) {
+            if selectedSessionID != Self.officeSelectionID,
+               selectedSessionID == nil || !list.contains(where: { $0.id == selectedSessionID }) {
                 selectedSessionID = list.first?.id
             }
             updateAttentionUX()

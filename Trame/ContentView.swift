@@ -156,6 +156,10 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             List(selection: $model.selectedSessionID) {
+                if !model.sessions.isEmpty {
+                    Label("Agent Office", systemImage: "building.2")
+                        .tag(AppModel.officeSelectionID)
+                }
                 if model.activePipeline != nil {
                     Section {
                         PipelineCard()
@@ -289,7 +293,17 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let session = model.selectedSession {
+        if model.selectedSessionID == AppModel.officeSelectionID {
+            OfficeView()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(.separator.opacity(0.5))
+                )
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .underPageBackgroundColor))
+        } else if let session = model.selectedSession {
             VStack(spacing: 0) {
                 SessionHeader(session: session, tab: $detailTab)
                 // The terminal stays mounted (hidden) so the attach stream and
