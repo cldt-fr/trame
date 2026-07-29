@@ -50,14 +50,51 @@ struct TrameApp: App {
                 .environmentObject(model)
         }
 
-        // F5.3 — aggregated state in the menu bar, actionable without the window.
+        // F5.3 — live session state in the menu bar (claude-status-bar
+        // style): permission requests win over work, work shows an animated
+        // spinner and elapsed time, idle shows the static logo.
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(model)
         } label: {
-            let waiting = model.attentionSessions.count
-            Image(systemName: waiting > 0 ? "bell.badge.fill" : "rectangle.grid.2x2")
+            MenuBarLabel(model: model)
         }
+    }
+}
+
+struct MenuBarLabel: View {
+    @ObservedObject var model: AppModel
+
+    private static let spinnerFrames = ["◐", "◓", "◑", "◒"]
+
+    var body: some View {
+        let needsPermission = model.sessions.contains { $0.isRunning && $0.attention == "permission" }
+        let working = model.sessions
+            .filter { $0.isRunning && $0.activity != nil }
+            .min { ($0.activitySince ?? .distantFuture) < ($1.activitySince ?? .distantFuture) }
+
+        if needsPermission {
+            // A session awaiting approval is never hidden behind a working one.
+            Image(systemName: "bell.badge.fill")
+        } else if let working {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                HStack(spacing: 3) {
+                    Text(Self.spinnerFrames[Int(context.date.timeIntervalSince1970) % Self.spinnerFrames.count])
+                    Text(Self.elapsed(since: working.activitySince, now: context.date))
+                        .monospacedDigit()
+                }
+            }
+        } else {
+            Image(systemName: "rectangle.grid.2x2")
+        }
+    }
+
+    static func elapsed(since: Date?, now: Date) -> String {
+        guard let since else { return "" }
+        let seconds = max(0, Int(now.timeIntervalSince(since)))
+        if seconds >= 3600 { return "\(seconds / 3600)h \(seconds % 3600 / 60)m" }
+        if seconds >= 60 { return "\(seconds / 60)m \(seconds % 60)s" }
+        return "\(seconds)s"
     }
 }
 
@@ -66,30 +103,18 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let waiting = model.attentionSessions
         let running = model.sessions.filter(\.isRunning)
 
-        if waiting.isEmpty {
-            Text(running.isEmpty ? "No active sessions" : "\(running.count) session(s) running")
+        if running.isEmpty {
+            Text("No active sessions")
         } else {
-            Text("\(waiting.count) session(s) need attention")
-            ForEach(waiting) { session in
+            // Permission first, then working, then idle/done.
+            ForEach(sorted(running)) { session in
                 Button {
                     focus(session)
                 } label: {
-                    Label(
-                        "\(session.name) — \(session.attention == "done" ? "finished" : (session.attentionMessage ?? "needs approval"))",
-                        systemImage: session.attention == "done" ? "checkmark.circle" : "bell.badge"
-                    )
+                    Label(title(for: session), systemImage: icon(for: session))
                 }
-            }
-        }
-        Divider()
-        ForEach(model.sessions.filter { $0.attention == nil && $0.isRunning }) { session in
-            Button {
-                focus(session)
-            } label: {
-                Label(session.name, systemImage: "terminal")
             }
         }
         Divider()
@@ -100,6 +125,40 @@ struct MenuBarView: View {
         Button("Quit Trame (sessions keep running)") {
             NSApp.terminate(nil)
         }
+    }
+
+    private func sorted(_ sessions: [SessionInfo]) -> [SessionInfo] {
+        sessions.sorted { a, b in
+            rank(a) == rank(b) ? a.name < b.name : rank(a) < rank(b)
+        }
+    }
+
+    private func rank(_ session: SessionInfo) -> Int {
+        if session.attention == "permission" { return 0 }
+        if session.activity != nil { return 1 }
+        if session.attention == "done" { return 2 }
+        return 3
+    }
+
+    private func title(for session: SessionInfo) -> String {
+        if session.attention == "permission" {
+            return "\(session.name) — \(session.attentionMessage ?? "needs approval")"
+        }
+        if let activity = session.activity {
+            let time = MenuBarLabel.elapsed(since: session.activitySince, now: Date())
+            return "\(session.name) — \(activity) · \(time)"
+        }
+        if session.attention == "done" {
+            return "\(session.name) — finished"
+        }
+        return "\(session.name) — idle"
+    }
+
+    private func icon(for session: SessionInfo) -> String {
+        if session.attention == "permission" { return "bell.badge" }
+        if session.activity != nil { return "bolt.fill" }
+        if session.attention == "done" { return "checkmark.circle" }
+        return "terminal"
     }
 
     private func focus(_ session: SessionInfo) {

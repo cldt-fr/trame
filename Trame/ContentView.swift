@@ -414,6 +414,10 @@ struct SessionRow: View {
             Image(systemName: attention == "done" ? "checkmark.circle.fill" : "bell.badge.fill")
                 .font(.caption)
                 .foregroundStyle(attention == "done" ? Color.blue : Color.orange)
+        } else if session.isRunning, let activity = session.activity {
+            Text(activity)
+                .font(.caption2)
+                .foregroundStyle(Color.accentColor)
         } else if case .exited(let code) = session.state {
             Text("exit \(code)")
                 .font(.caption2.monospacedDigit())

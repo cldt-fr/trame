@@ -21,11 +21,15 @@ nonisolated enum HookInstaller {
         try:
             s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
             s.connect(os.path.expanduser('~/Library/Application Support/Trame/daemon.sock'))
-            s.sendall((json.dumps({'hookEvent':{'sessionID':sid,'event':d.get('hook_event_name',''),'message':d.get('message','')}})+'\\n').encode())
+            s.sendall((json.dumps({'hookEvent':{'sessionID':sid,'event':d.get('hook_event_name',''),'message':d.get('message',''),'tool':d.get('tool_name','')}})+'\\n').encode())
             s.close()
         except Exception: pass
     "
     """
+
+    /// Hook events forwarded to the daemon. Notification/Stop drive the
+    /// inbox; the other three drive the live activity display.
+    private static let events = ["Notification", "Stop", "UserPromptSubmit", "PreToolUse", "PostToolUse"]
 
     static func install(in cwd: String) {
         installSettings(in: cwd)
@@ -44,7 +48,7 @@ nonisolated enum HookInstaller {
 
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         var changed = false
-        for event in ["Notification", "Stop"] {
+        for event in events {
             var entries = hooks[event] as? [[String: Any]] ?? []
             let alreadyInstalled = entries.contains { entry in
                 let inner = entry["hooks"] as? [[String: Any]] ?? []

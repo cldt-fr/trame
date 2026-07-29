@@ -4,7 +4,7 @@ import Foundation
 import TrameProtocol
 
 public final class Daemon {
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
 
     private let socketPath: String
     private let queue = DispatchQueue(label: "trame.daemon.main")
@@ -256,21 +256,46 @@ public final class Daemon {
     // MARK: - Hook events (daemon queue)
 
     /// Fire-and-forget line sent by a Claude Code hook; maps hook names to the
-    /// session attention state surfaced in the UI.
+    /// session attention/activity state surfaced in the UI.
     func handle(hookEvent: HookEvent) {
         guard let session = sessions[hookEvent.sessionID] else { return }
-        let changed: Bool
+        var changed = false
         switch hookEvent.event {
         case "Notification":
             changed = session.setAttention("permission", message: hookEvent.message)
         case "Stop":
             changed = session.setAttention("done", message: nil)
+            changed = session.setActivity(nil) || changed
+        case "UserPromptSubmit":
+            changed = session.setActivity("Thinking")
+            changed = session.setAttention(nil, message: nil) || changed
+        case "PreToolUse":
+            changed = session.setActivity(Self.activityLabel(forTool: hookEvent.tool))
+        case "PostToolUse":
+            changed = session.setActivity("Thinking")
         default:
-            changed = false
+            break
         }
         if changed {
-            DaemonLog.log("session \(hookEvent.sessionID) attention → \(session.info.attention ?? "nil")")
             broadcast(.sessionsChanged)
+        }
+    }
+
+    /// Human label for the tool a session is using (claude-status-bar style).
+    static func activityLabel(forTool tool: String?) -> String {
+        guard let tool, !tool.isEmpty else { return "Working" }
+        if tool.hasPrefix("mcp__") {
+            let server = tool.split(separator: "_", omittingEmptySubsequences: true).dropFirst().first
+            return "Using \(server.map(String.init) ?? "MCP")"
+        }
+        switch tool {
+        case "Edit", "Write", "MultiEdit", "NotebookEdit": return "Editing"
+        case "Read", "Grep", "Glob", "LS": return "Reading"
+        case "Bash", "BashOutput": return "Running command"
+        case "Task": return "Delegating"
+        case "WebFetch", "WebSearch": return "Browsing"
+        case "TodoWrite", "TaskCreate", "TaskUpdate": return "Planning"
+        default: return "Using \(tool)"
         }
     }
 

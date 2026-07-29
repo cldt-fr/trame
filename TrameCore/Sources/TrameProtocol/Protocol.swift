@@ -22,9 +22,15 @@ public struct SessionInfo: Codable, Identifiable, Hashable, Sendable {
     public var attentionMessage: String?
     /// When the current attention state was raised.
     public var attentionAt: Date?
+    /// What the agent is doing right now ("Editing", "Reading", "Thinking"…),
+    /// from PreToolUse/UserPromptSubmit hooks; nil when idle.
+    public var activity: String?
+    /// When the current burst of work started (for the elapsed-time display).
+    public var activitySince: Date?
 
     public init(id: String, name: String, cwd: String, command: [String], state: State, createdAt: Date,
-                attention: String? = nil, attentionMessage: String? = nil, attentionAt: Date? = nil) {
+                attention: String? = nil, attentionMessage: String? = nil, attentionAt: Date? = nil,
+                activity: String? = nil, activitySince: Date? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -34,6 +40,8 @@ public struct SessionInfo: Codable, Identifiable, Hashable, Sendable {
         self.attention = attention
         self.attentionMessage = attentionMessage
         self.attentionAt = attentionAt
+        self.activity = activity
+        self.activitySince = activitySince
     }
 
     public var isRunning: Bool {
@@ -120,14 +128,17 @@ public struct HookEventLine: Codable, Sendable {
 
 public struct HookEvent: Codable, Sendable {
     public let sessionID: String
-    /// Claude Code hook name: "Notification", "Stop", …
+    /// Claude Code hook name: "Notification", "Stop", "PreToolUse", …
     public let event: String
     public let message: String?
+    /// Tool name for PreToolUse/PostToolUse events.
+    public let tool: String?
 
-    public init(sessionID: String, event: String, message: String?) {
+    public init(sessionID: String, event: String, message: String?, tool: String? = nil) {
         self.sessionID = sessionID
         self.event = event
         self.message = message
+        self.tool = tool
     }
 }
 

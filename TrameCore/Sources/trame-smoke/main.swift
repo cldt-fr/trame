@@ -121,10 +121,10 @@ attach2.closeStream()
 // --- 2b. Événements de hook (attention) ---
 
 print("2️⃣b hooks Claude Code → attention")
-func sendHook(_ event: String, message: String? = nil, sessionID: String) throws {
+func sendHook(_ event: String, message: String? = nil, tool: String? = nil, sessionID: String) throws {
     let fd = try connectUnixSocket(path: socketPath)
     defer { close(fd) }
-    let line = try WireCodec.encodeLine(HookEventLine(hookEvent: HookEvent(sessionID: sessionID, event: event, message: message)))
+    let line = try WireCodec.encodeLine(HookEventLine(hookEvent: HookEvent(sessionID: sessionID, event: event, message: message, tool: tool)))
     _ = writeAll(fd, line)
     usleep(100_000)
 }
@@ -140,9 +140,17 @@ let cleared = await waitForSession(client, id: s1.id) { $0.attention == nil }
 step("saisie utilisateur → attention effacée", cleared)
 attachClear.closeStream()
 
+try sendHook("UserPromptSubmit", sessionID: s1.id)
+let thinking = await waitForSession(client, id: s1.id) { $0.activity == "Thinking" && $0.activitySince != nil }
+step("UserPromptSubmit → activité 'Thinking'", thinking)
+
+try sendHook("PreToolUse", tool: "Edit", sessionID: s1.id)
+let editing = await waitForSession(client, id: s1.id) { $0.activity == "Editing" }
+step("PreToolUse(Edit) → activité 'Editing'", editing)
+
 try sendHook("Stop", sessionID: s1.id)
-let done = await waitForSession(client, id: s1.id) { $0.attention == "done" && $0.attentionAt != nil }
-step("Stop → attention 'done' (horodatée)", done)
+let done = await waitForSession(client, id: s1.id) { $0.attention == "done" && $0.attentionAt != nil && $0.activity == nil }
+step("Stop → attention 'done', activité effacée", done)
 
 try await client.call(.clearAttention(id: s1.id))
 let dismissed = await waitForSession(client, id: s1.id) { $0.attention == nil }

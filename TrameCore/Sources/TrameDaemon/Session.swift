@@ -69,12 +69,27 @@ final class Session {
         info.state = .exited(code: code)
         info.attention = nil
         info.attentionMessage = nil
+        info.activity = nil
+        info.activitySince = nil
         DaemonLog.log("session \(info.id) exited with code \(code)")
         onExit?(self)
     }
 
     func rename(_ name: String) {
         info.name = name
+    }
+
+    /// Returns true when the activity label actually changed. The start time
+    /// is anchored to the beginning of the current burst of work.
+    func setActivity(_ activity: String?) -> Bool {
+        guard info.activity != activity else { return false }
+        if activity == nil {
+            info.activitySince = nil
+        } else if info.activity == nil {
+            info.activitySince = Date()
+        }
+        info.activity = activity
+        return true
     }
 
     /// Returns true when the attention state actually changed.
