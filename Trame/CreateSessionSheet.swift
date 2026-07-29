@@ -5,71 +5,79 @@ struct CreateSessionSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var directory: URL?
+    @State private var projectID: UUID?
+    @State private var useWorktree = false
+    @State private var branch = ""
     @State private var command = "claude"
-    @State private var name = ""
+
+    private var project: Project? {
+        model.projects.first { $0.id == projectID } ?? model.projects.first
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Nouvelle session")
+            Text("New Session")
                 .font(.title3.bold())
 
-            LabeledContent("Dossier") {
-                HStack {
-                    Text(directory.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? "Aucun dossier choisi")
-                        .foregroundStyle(directory == nil ? .secondary : .primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button("Choisir…") { pickDirectory() }
+            LabeledContent("Project") {
+                Picker("", selection: $projectID) {
+                    ForEach(model.projects) { p in
+                        Text(p.name).tag(Optional(p.id))
+                    }
                 }
+                .labelsHidden()
             }
 
-            LabeledContent("Commande") {
-                TextField("claude (vide = shell)", text: $command)
+            LabeledContent("Destination") {
+                Picker("", selection: $useWorktree) {
+                    Text("Repo (current branch)").tag(false)
+                    Text("New worktree").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+
+            if useWorktree {
+                LabeledContent("Branch") {
+                    TextField("feat/my-feature", text: $branch)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body.monospaced())
+                }
+                Text("The worktree is created under ~/.trame/worktrees, isolated from the main checkout. The branch is created if it does not exist.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LabeledContent("Command") {
+                TextField("claude (empty = shell)", text: $command)
                     .textFieldStyle(.roundedBorder)
                     .font(.body.monospaced())
             }
 
-            LabeledContent("Nom") {
-                TextField("auto", text: $name)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            Text("La commande est lancée via votre shell de connexion (PATH complet). Laissez vide pour un shell interactif.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             HStack {
                 Spacer()
-                Button("Annuler") { dismiss() }
+                Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Créer") {
-                    guard let directory else { return }
-                    let cwd = directory.path
+                Button("Create") {
+                    guard let project else { return }
+                    let destination: SessionDestination = useWorktree ? .worktree(branch: branch) : .repo
                     let cmd = command
-                    let sessionName = name
                     Task {
-                        await model.createSession(cwd: cwd, command: cmd, name: sessionName)
+                        await model.createSession(project: project, destination: destination, command: cmd)
                     }
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(directory == nil)
+                .disabled(project == nil || (useWorktree && branch.trimmingCharacters(in: .whitespaces).isEmpty))
             }
         }
         .padding(24)
-        .frame(width: 460)
-    }
-
-    private func pickDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choisir"
-        if panel.runModal() == .OK {
-            directory = panel.url
+        .frame(width: 480)
+        .onAppear {
+            projectID = model.createSheetProject?.id ?? model.projects.first?.id
+            if let last = project?.lastCommand, !last.isEmpty {
+                command = last
+            }
         }
     }
 }

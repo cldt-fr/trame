@@ -10,9 +10,9 @@ public enum DaemonClientError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .connectFailed(let path): return "Impossible de se connecter au démon (\(path))"
-        case .disconnected: return "Connexion au démon perdue"
-        case .protocolError(let msg): return "Erreur de protocole : \(msg)"
+        case .connectFailed(let path): return "Could not connect to the daemon (\(path))"
+        case .disconnected: return "Lost connection to the daemon"
+        case .protocolError(let msg): return "Protocol error: \(msg)"
         case .daemonError(let msg): return msg
         }
     }
@@ -31,7 +31,7 @@ func connectUnixSocket(path: String) throws -> Int32 {
     }
     guard copied < pathCapacity else {
         close(fd)
-        throw DaemonClientError.connectFailed("chemin trop long : \(path)")
+        throw DaemonClientError.connectFailed("path too long: \(path)")
     }
     let result = withUnsafePointer(to: &addr) { ptr in
         ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in

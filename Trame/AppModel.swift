@@ -2,7 +2,15 @@ import Combine
 import Foundation
 import SwiftUI
 import TrameClient
+import TrameGit
 import TrameProtocol
+
+enum SessionDestination: Hashable {
+    /// La branche courante, directement dans le repo.
+    case repo
+    /// Un worktree géré par Trame sur cette branche (créée si besoin).
+    case worktree(branch: String)
+}
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -11,6 +19,9 @@ final class AppModel: ObservableObject {
     @Published var daemonConnected = false
     @Published var lastError: String?
     @Published var showCreateSheet = false
+    @Published var projects: [Project] = ProjectStore.load()
+    /// Projet présélectionné dans la feuille de création.
+    @Published var createSheetProject: Project?
 
     let client = DaemonClient()
     private var refreshTimer: Timer?
@@ -70,7 +81,83 @@ final class AppModel: ObservableObject {
         sessions.first { $0.id == selectedSessionID }
     }
 
+    // MARK: - Projets
+
+    func addProject(from url: URL) async {
+        let path = url.path
+        let root = await Task.detached { Git.repositoryRoot(of: path) }.value
+        guard let root else {
+            lastError = "\(url.lastPathComponent) is not a git repository."
+            return
+        }
+        guard !projects.contains(where: { $0.root == root }) else { return }
+        let project = Project(id: UUID(), name: (root as NSString).lastPathComponent, root: root, lastCommand: nil)
+        projects.append(project)
+        ProjectStore.save(projects)
+    }
+
+    /// Retire le projet de Trame ; ne touche ni au repo ni aux sessions.
+    func unregisterProject(_ project: Project) {
+        projects.removeAll { $0.id == project.id }
+        ProjectStore.save(projects)
+    }
+
+    func sessions(of project: Project) -> [SessionInfo] {
+        let worktreeDir = WorktreeLayout.directory(for: project) + "/"
+        return sessions.filter { $0.cwd == project.root || $0.cwd.hasPrefix(worktreeDir) }
+    }
+
+    /// Sessions créées hors de tout projet enregistré.
+    var unassignedSessions: [SessionInfo] {
+        let assigned = Set(projects.flatMap { sessions(of: $0).map(\.id) })
+        return sessions.filter { !assigned.contains($0.id) }
+    }
+
+    func project(for session: SessionInfo) -> Project? {
+        projects.first { session.cwd == $0.root || session.cwd.hasPrefix(WorktreeLayout.directory(for: $0) + "/") }
+    }
+
+    func isWorktreeSession(_ session: SessionInfo) -> Bool {
+        WorktreeLayout.isManagedWorktree(session.cwd)
+    }
+
     // MARK: - Actions
+
+    /// Crée une session dans un projet : sur le repo, ou dans un worktree créé
+    /// à la volée (F1.2). Mémorise la commande comme défaut du projet (F1.9).
+    func createSession(project: Project, destination: SessionDestination, command: String) async {
+        let cwd: String
+        switch destination {
+        case .repo:
+            cwd = project.root
+        case .worktree(let branch):
+            let trimmedBranch = branch.trimmingCharacters(in: .whitespaces)
+            guard !trimmedBranch.isEmpty else {
+                lastError = "A branch name is required for a worktree."
+                return
+            }
+            let path = WorktreeLayout.path(for: project, branch: trimmedBranch)
+            let root = project.root
+            do {
+                if !FileManager.default.fileExists(atPath: path) {
+                    try await Task.detached {
+                        try Git.addWorktree(root: root, path: path, branch: trimmedBranch)
+                    }.value
+                }
+            } catch {
+                lastError = "Could not create worktree: \(error.localizedDescription)"
+                return
+            }
+            cwd = path
+        }
+
+        if var updated = projects.first(where: { $0.id == project.id }) {
+            updated.lastCommand = command.trimmingCharacters(in: .whitespaces)
+            projects = projects.map { $0.id == updated.id ? updated : $0 }
+            ProjectStore.save(projects)
+        }
+        await createSession(cwd: cwd, command: command, name: nil)
+    }
 
     /// Runs `command` through a login shell so the user's PATH applies (claude,
     /// nvm, brew…). An empty command opens an interactive shell.
@@ -94,6 +181,27 @@ final class AppModel: ObservableObject {
             }
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    /// Supprime la session ET son worktree géré. La branche est conservée
+    /// (garde-fou F6.3).
+    func removeSessionAndWorktree(_ session: SessionInfo) async {
+        guard let project = project(for: session), isWorktreeSession(session) else {
+            await removeSession(session.id)
+            return
+        }
+        await removeSession(session.id)
+        // Ne pas supprimer le worktree si une autre session l'utilise encore.
+        guard !sessions.contains(where: { $0.cwd == session.cwd }) else { return }
+        let root = project.root
+        let path = session.cwd
+        do {
+            try await Task.detached {
+                try Git.removeWorktree(root: root, path: path, force: true)
+            }.value
+        } catch {
+            lastError = "Worktree was not removed: \(error.localizedDescription)"
         }
     }
 

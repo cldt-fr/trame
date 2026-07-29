@@ -26,7 +26,7 @@ struct TrameApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Nouvelle session…") {
+                Button("New Session…") {
                     model.showCreateSheet = true
                 }
                 .keyboardShortcut("n", modifiers: [.command])

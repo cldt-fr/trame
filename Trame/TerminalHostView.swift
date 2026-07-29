@@ -54,7 +54,7 @@ struct TerminalHostView: NSViewRepresentable {
             do {
                 try stream.attach(socketPath: socketPath, sessionID: sessionID, replay: true)
             } catch {
-                view.feed(text: "⚠️  attach impossible : \(error.localizedDescription)\r\n")
+                view.feed(text: "⚠️  attach failed: \(error.localizedDescription)\r\n")
             }
         }
 

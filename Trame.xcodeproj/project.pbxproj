@@ -11,6 +11,7 @@
 		7714A1000000000000000008 /* TrameDaemon in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000004 /* TrameDaemon */; };
 		7714A1000000000000000009 /* TrameClient in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000005 /* TrameClient */; };
 		7714A100000000000000000A /* TrameProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000006 /* TrameProtocol */; };
+		7714A100000000000000000C /* TrameGit in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000B /* TrameGit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +35,7 @@
 				7714A1000000000000000008 /* TrameDaemon in Frameworks */,
 				7714A1000000000000000009 /* TrameClient in Frameworks */,
 				7714A100000000000000000A /* TrameProtocol in Frameworks */,
+				7714A100000000000000000C /* TrameGit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,6 +82,7 @@
 				7714A1000000000000000004 /* TrameDaemon */,
 				7714A1000000000000000005 /* TrameClient */,
 				7714A1000000000000000006 /* TrameProtocol */,
+				7714A100000000000000000B /* TrameGit */,
 			);
 			productName = Trame;
 			productReference = E6F076FE3019EBD2008D8CE7 /* Trame.app */;
@@ -109,12 +112,12 @@
 			);
 			mainGroup = E6F076F53019EBD2008D8CE7;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = E6F076FF3019EBD2008D8CE7 /* Products */;
 			packageReferences = (
 				7714A1000000000000000001 /* XCLocalSwiftPackageReference "TrameCore" */,
 				7714A1000000000000000002 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E6F076FF3019EBD2008D8CE7 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -330,6 +333,27 @@
 		};
 /* End XCBuildConfiguration section */
 
+/* Begin XCConfigurationList section */
+		E6F076F93019EBD2008D8CE7 /* Build configuration list for PBXProject "Trame" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E6F077093019EBD3008D8CE7 /* Debug */,
+				E6F0770A3019EBD3008D8CE7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E6F0770B3019EBD3008D8CE7 /* Build configuration list for PBXNativeTarget "Trame" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E6F0770C3019EBD3008D8CE7 /* Debug */,
+				E6F0770D3019EBD3008D8CE7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
 /* Begin XCLocalSwiftPackageReference section */
 		7714A1000000000000000001 /* XCLocalSwiftPackageReference "TrameCore" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -366,28 +390,11 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = TrameProtocol;
 		};
+		7714A100000000000000000B /* TrameGit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameGit;
+		};
 /* End XCSwiftPackageProductDependency section */
-
-/* Begin XCConfigurationList section */
-		E6F076F93019EBD2008D8CE7 /* Build configuration list for PBXProject "Trame" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				E6F077093019EBD3008D8CE7 /* Debug */,
-				E6F0770A3019EBD3008D8CE7 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		E6F0770B3019EBD3008D8CE7 /* Build configuration list for PBXNativeTarget "Trame" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				E6F0770C3019EBD3008D8CE7 /* Debug */,
-				E6F0770D3019EBD3008D8CE7 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-/* End XCConfigurationList section */
 	};
 	rootObject = E6F076F63019EBD2008D8CE7 /* Project object */;
 }
