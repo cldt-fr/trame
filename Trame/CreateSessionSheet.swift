@@ -107,8 +107,7 @@ struct CreateSessionSheet: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(project == nil
-                              || (useWorktree && branch.trimmingCharacters(in: .whitespaces).isEmpty)
-                              || (preset == .autonomous && !useWorktree))
+                              || (useWorktree && branch.trimmingCharacters(in: .whitespaces).isEmpty))
             }
             .padding(16)
         }
@@ -122,7 +121,7 @@ struct CreateSessionSheet: View {
             selectedMCPIDs = Set(project?.lastMCPServerIDs ?? []).intersection(known)
             meshRole = useWorktree ? branch : (project?.name.lowercased() ?? "")
             if let last = project?.lastPermissionPreset, let p = PermissionPreset(rawValue: last) {
-                preset = (p == .autonomous && !useWorktree) ? .prudent : p
+                preset = p
             }
             showOptions = !selectedMCPIDs.isEmpty || preset != .prudent
         }
@@ -143,7 +142,7 @@ struct CreateSessionSheet: View {
             Label(
                 useWorktree
                     ? "Skips ALL permission prompts. Contained to this worktree, but the agent keeps network access and your credentials."
-                    : "Only available for worktree sessions.",
+                    : "Skips ALL permission prompts directly on your main checkout — the agent can modify anything without asking. A worktree is safer.",
                 systemImage: "shield.slash"
             )
             .font(.caption)

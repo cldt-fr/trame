@@ -8,8 +8,8 @@ enum PermissionPreset: String, CaseIterable, Identifiable {
     case prudent
     /// Common safe tools pre-approved via --allowedTools; the rest asks.
     case standard
-    /// --dangerously-skip-permissions. Only offered for isolated worktree
-    /// sessions (contained blast radius, F8.2).
+    /// --dangerously-skip-permissions. Recommended inside an isolated
+    /// worktree; allowed anywhere with an explicit warning (F8.2).
     case autonomous
 
     var id: String { rawValue }

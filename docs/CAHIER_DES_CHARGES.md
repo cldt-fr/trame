@@ -60,7 +60,7 @@ Trame est un cockpit natif macOS pour développeurs qui travaillent avec **plusi
 | Design | **Natif macOS assumé** (type Things / Craft) : matériaux système, vibrancy, HIG, léger et aéré. |
 | Git | **Review native + actions** : diff par session, commit, push, PR, merge de worktree. |
 | Coûts | **Tracking par session + agrégats globaux** (jour/semaine), alertes de seuil. |
-| Permissions | **Presets par session** (Prudent / Standard / Autonome) ; mode Autonome (skip-permissions) réservé aux worktrees isolés. |
+| Permissions | **Presets par session** (Prudent / Standard / Autonome) ; Autonome (skip-permissions) disponible partout, worktree recommandé avec avertissement renforcé hors worktree *(révisé le 29/07/2026)*. |
 | Persistance | **Restauration complète** : les process survivent à la fermeture de la fenêtre ; sessions, mesh et inbox restaurés à la réouverture. |
 | Comptes | **Multi-comptes Anthropic** : plusieurs comptes gérés dans Trame (un `CLAUDE_CONFIG_DIR` par compte), compte assigné par session, coûts ventilés par compte. |
 | Extensibilité agents | **Claude Code seul en V1**, mais toute la logique spécifique au CLI est isolée derrière une **interface d'adaptateur d'agent** ; deuxième adaptateur pressenti : **Codex CLI** (V3). |
@@ -257,7 +257,7 @@ Mesh
   - **Prudent** : mode par défaut du CLI, tout passe par l'inbox.
   - **Standard** : allowlist d'outils courants (lecture, tests, lint) pré-approuvés via settings générés ; le reste passe par l'inbox.
   - **Autonome** : `--dangerously-skip-permissions`.
-- **F8.2** Garde-fou structurel : **Autonome n'est proposable que pour une session en worktree isolé** (blast radius contenu). Badge visuel permanent et distinct sur les sessions autonomes.
+- **F8.2** Garde-fou informatif *(décision révisée le 29 juillet 2026 : disponible partout à la demande de l'utilisateur)* : **Autonome est disponible pour toute session**, y compris sur le checkout principal. Le worktree isolé reste la voie recommandée ; hors worktree, l'avertissement est renforcé (l'agent peut tout modifier sans demander). Badge visuel permanent et distinct sur les sessions autonomes.
 - **F8.3** L'allowlist du preset Standard est éditable globalement et par projet.
 
 ### F9 — Comptes Anthropic (multi-comptes)

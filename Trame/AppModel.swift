@@ -305,11 +305,6 @@ final class AppModel: ObservableObject {
     func createSession(project: Project, destination: SessionDestination, command: String,
                        mcpServerIDs: [UUID] = [], meshRole: String? = nil,
                        permissionPreset: PermissionPreset = .prudent) async {
-        // F8.2 — Autonomous is only allowed inside an isolated worktree.
-        if permissionPreset == .autonomous, case .repo = destination {
-            lastError = "Autonomous mode is only available for worktree sessions."
-            return
-        }
         let cwd: String
         switch destination {
         case .repo:
