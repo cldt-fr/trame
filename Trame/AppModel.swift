@@ -120,6 +120,7 @@ final class AppModel: ObservableObject {
             pruneMeshMembers()
             refreshUsage()
             saveSessionSnapshot()
+            advancePipelineIfNeeded()
         }
     }
 
@@ -269,7 +270,11 @@ final class AppModel: ObservableObject {
             badge += 1
             let isNewTransition = knownAttention[session.id] != attention
             let userIsLookingAtIt = NSApp.isActive && selectedSessionID == session.id
-            if isNewTransition && !userIsLookingAtIt {
+            // Pipeline steps get their own progress notifications.
+            let isPipelineStep = activePipeline.map {
+                !$0.finished && $0.steps[$0.currentIndex].sessionID == session.id
+            } ?? false
+            if isNewTransition && !userIsLookingAtIt && !isPipelineStep {
                 postNotification(for: session, attention: attention)
             }
         }
@@ -812,6 +817,91 @@ final class AppModel: ObservableObject {
               let match = regex.firstMatch(in: command, range: NSRange(command.startIndex..., in: command)),
               let range = Range(match.range(at: 1), in: command) else { return nil }
         return String(command[range])
+    }
+
+    // MARK: - Pipelines (V2)
+
+    struct PipelineStep: Identifiable, Equatable {
+        let id = UUID()
+        var sessionID: String
+        var prompt: String
+    }
+
+    struct Pipeline: Equatable {
+        var steps: [PipelineStep]
+        var currentIndex: Int = 0
+        var finished = false
+    }
+
+    @Published var activePipeline: Pipeline?
+
+    /// Sends step 1 and lets the refresh loop advance on each Stop hook.
+    func startPipeline(steps: [PipelineStep]) async {
+        guard !steps.isEmpty else { return }
+        activePipeline = Pipeline(steps: steps)
+        await sendPipelineStep(0)
+    }
+
+    func cancelPipeline() {
+        activePipeline = nil
+    }
+
+    private func sendPipelineStep(_ index: Int) async {
+        guard let pipeline = activePipeline, pipeline.steps.indices.contains(index) else { return }
+        let step = pipeline.steps[index]
+        // Typing the prompt clears the session's attention, so the next
+        // "done" we observe belongs to this step.
+        _ = try? await client.call(.sendInput(id: step.sessionID, text: step.prompt))
+    }
+
+    /// Called from refresh(): advances the pipeline when the current step's
+    /// session fired its Stop hook (attention == "done").
+    private func advancePipelineIfNeeded() {
+        guard var pipeline = activePipeline, !pipeline.finished else { return }
+        let step = pipeline.steps[pipeline.currentIndex]
+        guard let session = sessions.first(where: { $0.id == step.sessionID }) else {
+            pipelineNotification(title: "Pipeline stopped",
+                                 body: "Step \(pipeline.currentIndex + 1)'s session no longer exists.")
+            activePipeline = nil
+            return
+        }
+        guard session.isRunning else {
+            pipelineNotification(title: "Pipeline stopped",
+                                 body: "\(session.name) exited during step \(pipeline.currentIndex + 1).")
+            activePipeline = nil
+            return
+        }
+        guard session.attention == "done" else { return }
+
+        Task { await dismissAttention(session.id) }
+        if pipeline.currentIndex + 1 < pipeline.steps.count {
+            pipeline.currentIndex += 1
+            activePipeline = pipeline
+            let next = pipeline.steps[pipeline.currentIndex]
+            let nextName = sessions.first { $0.id == next.sessionID }?.name ?? "session"
+            pipelineNotification(title: "Pipeline — step \(pipeline.currentIndex + 1)/\(pipeline.steps.count)",
+                                 body: "\(session.name) finished, dispatching to \(nextName).")
+            Task { await sendPipelineStep(pipeline.currentIndex) }
+        } else {
+            pipeline.finished = true
+            activePipeline = pipeline
+            pipelineNotification(title: "Pipeline complete 🎉",
+                                 body: "All \(pipeline.steps.count) steps are done.")
+        }
+    }
+
+    private func pipelineNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "trame-pipeline-\(UUID().uuidString)",
+                                  content: content, trigger: nil))
+        let pushURL = UserDefaults.standard.string(forKey: "pushURL") ?? ""
+        if !pushURL.isEmpty {
+            HealthCheck.sendPush(urlString: pushURL, title: title, body: body)
+        }
     }
 
     // MARK: - Dispatch & orchestration (V2)

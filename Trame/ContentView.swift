@@ -138,6 +138,14 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             List(selection: $model.selectedSessionID) {
+                if model.activePipeline != nil {
+                    Section {
+                        PipelineCard()
+                    } header: {
+                        Label("Pipeline", systemImage: "arrow.triangle.turn.up.right.circle")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
                 if !model.attentionSessions.isEmpty {
                     Section("Inbox") {
                         ForEach(model.attentionSessions) { session in
@@ -316,6 +324,56 @@ struct ContentView: View {
 }
 
 // MARK: - Rows
+
+/// Compact live view of the running pipeline (V2): one row per step with
+/// its state, and a cancel/dismiss control.
+struct PipelineCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let pipeline = model.activePipeline {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(pipeline.steps.enumerated()), id: \.element.id) { index, step in
+                    HStack(spacing: 6) {
+                        Image(systemName: icon(index: index, pipeline: pipeline))
+                            .font(.caption)
+                            .foregroundStyle(color(index: index, pipeline: pipeline))
+                            .frame(width: 14)
+                        Text(model.sessions.first { $0.id == step.sessionID }?.name ?? "?")
+                            .font(.caption)
+                            .lineLimit(1)
+                        Text(step.prompt)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 2)
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button(pipeline.finished ? "Dismiss" : "Cancel") {
+                        model.cancelPipeline()
+                    }
+                    .controlSize(.mini)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func icon(index: Int, pipeline: AppModel.Pipeline) -> String {
+        if pipeline.finished || index < pipeline.currentIndex { return "checkmark.circle.fill" }
+        if index == pipeline.currentIndex { return "circle.dotted.circle" }
+        return "circle"
+    }
+
+    private func color(index: Int, pipeline: AppModel.Pipeline) -> Color {
+        if pipeline.finished || index < pipeline.currentIndex { return .green }
+        if index == pipeline.currentIndex { return .accentColor }
+        return .secondary
+    }
+}
 
 struct InboxRow: View {
     @EnvironmentObject private var model: AppModel
