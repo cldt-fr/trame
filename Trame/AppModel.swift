@@ -304,6 +304,44 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    /// One outgoing talkie-walkie message, attributed to its sender (F4.3).
+    struct MeshTrafficEntry: Identifiable {
+        let id = UUID()
+        let timestamp: Date
+        let from: String
+        let to: String?
+        let text: String
+        let isBroadcast: Bool
+    }
+
+    /// Mesh traffic recovered from the member sessions' transcripts.
+    func loadMeshTraffic() async -> [MeshTrafficEntry] {
+        struct Source: Sendable {
+            let role: String
+            let configDir: String
+            let cwd: String
+            let since: Date
+        }
+        let sources: [Source] = meshMembers.compactMap { member in
+            guard let session = sessions.first(where: { $0.id == member.id }) else { return nil }
+            let configDir = account(for: session).flatMap { AccountStore.configDir(for: $0.id) }
+                ?? NSHomeDirectory() + "/.claude"
+            return Source(role: member.role, configDir: configDir, cwd: session.cwd, since: session.createdAt)
+        }
+        let entries = await Task.detached { () -> [(Date, String, String?, String, Bool)] in
+            var all: [(Date, String, String?, String, Bool)] = []
+            for source in sources {
+                for msg in MeshMessageParser.scan(configDir: source.configDir, cwd: source.cwd, since: source.since) {
+                    all.append((msg.timestamp, source.role, msg.to, msg.text, msg.isBroadcast))
+                }
+            }
+            return all.sorted { $0.0 > $1.0 }
+        }.value
+        return entries.prefix(200).map {
+            MeshTrafficEntry(timestamp: $0.0, from: $0.1, to: $0.2, text: $0.3, isBroadcast: $0.4)
+        }
+    }
+
     func dismissAttention(_ id: String) async {
         _ = try? await client.call(.clearAttention(id: id))
         await refresh()

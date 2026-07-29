@@ -52,6 +52,26 @@ import Testing
                 == "-tmp-my-app-v2")
     }
 
+    @Test func meshMessageParsing() {
+        let line = """
+        {"type":"assistant","timestamp":"2026-07-29T10:00:00.000Z","message":{"model":"claude-opus-5","content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"t1","name":"mcp__talkie-walkie__send_message","input":{"to":"reviewer","message":"tests OK, tu peux merger"}},{"type":"tool_use","id":"t2","name":"mcp__talkie-walkie__broadcast_message","input":{"message":"deploy done"}}]}}
+        """
+        let messages = MeshMessageParser.parseLine(Data(line.utf8))
+        #expect(messages.count == 2)
+        #expect(messages[0].tool == "send_message")
+        #expect(messages[0].to == "reviewer")
+        #expect(messages[0].text == "tests OK, tu peux merger")
+        #expect(messages[1].isBroadcast)
+        #expect(messages[1].to == nil)
+        #expect(messages[1].text == "deploy done")
+
+        // Non-talkie tool calls are ignored.
+        let bash = """
+        {"type":"assistant","timestamp":"2026-07-29T10:00:00.000Z","message":{"content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"ls"}}]}}
+        """
+        #expect(MeshMessageParser.parseLine(Data(bash.utf8)).isEmpty)
+    }
+
     @Test func scanAndAggregate() throws {
         let dir = NSTemporaryDirectory() + "trame-usage-test-\(UUID().uuidString.prefix(8))"
         let projectDir = dir + "/projects/-tmp-demo"
