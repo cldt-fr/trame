@@ -14,6 +14,7 @@ struct CreateSessionSheet: View {
     @State private var joinMesh = false
     @State private var meshRole = ""
     @State private var preset: PermissionPreset = .prudent
+    @State private var accountID: UUID = AccountStore.defaultAccountID
     @State private var showOptions = false
     @AppStorage("standardAllowlist") private var standardAllowlist = PermissionPreset.defaultAllowlist
 
@@ -57,6 +58,18 @@ struct CreateSessionSheet: View {
                     }
                     TextField("Command", text: $command, prompt: Text("claude (empty = shell)"))
                         .fontDesign(.monospaced)
+                    if !model.accounts.isEmpty {
+                        Picker("Account", selection: $accountID) {
+                            Label("Default", systemImage: "circle.fill")
+                                .tint(.secondary)
+                                .tag(AccountStore.defaultAccountID)
+                            ForEach(model.accounts) { account in
+                                Label(account.name, systemImage: "circle.fill")
+                                    .tint(AccountStore.color(for: account))
+                                    .tag(account.id)
+                            }
+                        }
+                    }
                 } footer: {
                     if useWorktree {
                         Text("An isolated checkout under ~/.trame/worktrees — run several agents on the same repo without conflicts.")
@@ -126,6 +139,10 @@ struct CreateSessionSheet: View {
             if let last = project?.lastPermissionPreset, let p = PermissionPreset(rawValue: last) {
                 preset = p
             }
+            if let last = project?.lastAccountID,
+               last == AccountStore.defaultAccountID || model.accounts.contains(where: { $0.id == last }) {
+                accountID = last
+            }
             showOptions = !selectedMCPIDs.isEmpty || preset != .prudent
         }
     }
@@ -191,10 +208,11 @@ struct CreateSessionSheet: View {
             ? (meshRole.trimmingCharacters(in: .whitespaces).isEmpty ? project.name : meshRole)
             : nil
         let chosenPreset = preset
+        let chosenAccount = accountID
         Task {
             await model.createSession(project: project, destination: destination, command: cmd,
                                       mcpServerIDs: mcpIDs, meshRole: role,
-                                      permissionPreset: chosenPreset)
+                                      permissionPreset: chosenPreset, accountID: chosenAccount)
         }
         dismiss()
     }

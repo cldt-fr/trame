@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published var meshMembers: [MeshMember] = MeshStore.load()
     @Published var showMeshPanel = false
     @Published var showPalette = false
+    @Published var accounts: [Account] = AccountStore.load()
     private var sessionMetas: [String: SessionMeta] = SessionMetaStore.load()
 
     init() {
@@ -196,6 +197,32 @@ final class AppModel: ObservableObject {
         sessionMetas[session.id]?.baseCommit ?? "HEAD"
     }
 
+    // MARK: - Accounts (F9)
+
+    func account(for session: SessionInfo) -> Account? {
+        guard let id = sessionMetas[session.id]?.accountID else { return nil }
+        return accounts.first { $0.id == id }
+    }
+
+    func saveAccount(_ account: Account) {
+        if let idx = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[idx] = account
+        } else {
+            accounts.append(account)
+        }
+        AccountStore.save(accounts)
+    }
+
+    /// Refuses when live sessions still run under the account (F9.6).
+    func deleteAccount(_ account: Account) -> Bool {
+        let alive = Set(sessions.map(\.id))
+        let inUse = sessionMetas.contains { alive.contains($0.key) && $0.value.accountID == account.id }
+        guard !inUse else { return false }
+        accounts.removeAll { $0.id == account.id }
+        AccountStore.save(accounts)
+        return true
+    }
+
     func dismissAttention(_ id: String) async {
         _ = try? await client.call(.clearAttention(id: id))
         await refresh()
@@ -304,7 +331,8 @@ final class AppModel: ObservableObject {
     /// à la volée (F1.2). Mémorise la commande comme défaut du projet (F1.9).
     func createSession(project: Project, destination: SessionDestination, command: String,
                        mcpServerIDs: [UUID] = [], meshRole: String? = nil,
-                       permissionPreset: PermissionPreset = .prudent) async {
+                       permissionPreset: PermissionPreset = .prudent,
+                       accountID: UUID = AccountStore.defaultAccountID) async {
         let cwd: String
         switch destination {
         case .repo:
@@ -334,6 +362,7 @@ final class AppModel: ObservableObject {
             updated.lastCommand = command.trimmingCharacters(in: .whitespaces)
             updated.lastMCPServerIDs = mcpServerIDs
             updated.lastPermissionPreset = permissionPreset.rawValue
+            updated.lastAccountID = accountID
             projects = projects.map { $0.id == updated.id ? updated : $0 }
             ProjectStore.save(projects)
         }
@@ -385,7 +414,13 @@ final class AppModel: ObservableObject {
             }
         }
 
-        let created = await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv)
+        // Isolated login/config per account (F9.1).
+        if let configDir = AccountStore.configDir(for: accountID) {
+            sessionEnv["CLAUDE_CONFIG_DIR"] = configDir
+        }
+
+        let created = await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv,
+                                          accountID: accountID == AccountStore.defaultAccountID ? nil : accountID)
         if var member = newMember, let created {
             member.id = created.id
             meshMembers.append(member)
@@ -396,7 +431,8 @@ final class AppModel: ObservableObject {
     /// Runs `command` through a login shell so the user's PATH applies (claude,
     /// nvm, brew…). An empty command opens an interactive shell.
     @discardableResult
-    func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:]) async -> SessionInfo? {
+    func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:],
+                       accountID: UUID? = nil) async -> SessionInfo? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv: [String]
         let trimmed = command.trimmingCharacters(in: .whitespaces)
@@ -415,10 +451,8 @@ final class AppModel: ObservableObject {
                 cwd: cwd, command: argv, env: env, cols: 120, rows: 32
             ))
             if case .session(let info) = resp {
-                if let baseCommit {
-                    sessionMetas[info.id] = SessionMeta(baseCommit: baseCommit)
-                    SessionMetaStore.save(sessionMetas)
-                }
+                sessionMetas[info.id] = SessionMeta(baseCommit: baseCommit ?? "HEAD", accountID: accountID)
+                SessionMetaStore.save(sessionMetas)
                 await refresh()
                 selectedSessionID = info.id
                 return info

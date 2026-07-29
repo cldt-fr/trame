@@ -11,6 +11,8 @@ struct Project: Codable, Identifiable, Hashable {
     var lastMCPServerIDs: [UUID]?
     /// Dernier preset de permissions utilisé (F8).
     var lastPermissionPreset: String?
+    /// Dernier compte utilisé (F9.3 : défaut surchargeable par projet).
+    var lastAccountID: UUID?
 }
 
 enum ProjectStore {
@@ -35,6 +37,8 @@ enum ProjectStore {
 /// diff is computed against the session's *starting point*, not HEAD).
 struct SessionMeta: Codable {
     var baseCommit: String
+    /// Account the session runs under (nil = Default account).
+    var accountID: UUID?
 }
 
 nonisolated enum SessionMetaStore {

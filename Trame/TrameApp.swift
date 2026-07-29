@@ -45,6 +45,11 @@ struct TrameApp: App {
             }
         }
 
+        Settings {
+            TrameSettings()
+                .environmentObject(model)
+        }
+
         // F5.3 — aggregated state in the menu bar, actionable without the window.
         MenuBarExtra {
             MenuBarView()

@@ -152,7 +152,8 @@ struct ContentView: View {
     private func sessionRow(_ session: SessionInfo) -> some View {
         SessionRow(session: session,
                    isWorktree: model.isWorktreeSession(session),
-                   meshRole: model.meshMember(for: session.id)?.role)
+                   meshRole: model.meshMember(for: session.id)?.role,
+                   account: model.account(for: session))
             .tag(session.id)
             .contextMenu {
                 if session.isRunning {
@@ -308,6 +309,7 @@ struct SessionRow: View {
     let session: SessionInfo
     let isWorktree: Bool
     var meshRole: String?
+    var account: Account?
 
     private var subtitle: [(String, String)] {
         var parts: [(String, String)] = []
@@ -329,6 +331,12 @@ struct SessionRow: View {
                 HStack(spacing: 5) {
                     Text(session.name)
                         .lineLimit(1)
+                    if let account {
+                        Circle()
+                            .fill(AccountStore.color(for: account))
+                            .frame(width: 6, height: 6)
+                            .help("Account: \(account.name)")
+                    }
                     if PermissionPreset.isAutonomous(session) {
                         Image(systemName: "shield.slash.fill")
                             .font(.system(size: 9))
@@ -389,6 +397,9 @@ struct SessionHeader: View {
         }
         if let role = model.meshMember(for: session.id)?.role {
             parts.append("mesh: \(role)")
+        }
+        if let account = model.account(for: session) {
+            parts.append(account.name)
         }
         if case .exited(let code) = session.state {
             parts.append("exited (\(code))")
