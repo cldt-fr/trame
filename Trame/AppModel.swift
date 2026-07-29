@@ -130,6 +130,30 @@ final class AppModel: ObservableObject {
         sessions.first { $0.id == selectedSessionID }
     }
 
+    // MARK: - Inbox
+
+    /// Running sessions waiting on the user: permission requests first, then
+    /// finished turns, most recent first (F5.1).
+    var attentionSessions: [SessionInfo] {
+        sessions
+            .filter { $0.isRunning && $0.attention != nil }
+            .sorted { a, b in
+                if a.attention != b.attention { return a.attention == "permission" }
+                return (a.attentionAt ?? .distantPast) > (b.attentionAt ?? .distantPast)
+            }
+    }
+
+    func dismissAttention(_ id: String) async {
+        _ = try? await client.call(.clearAttention(id: id))
+        await refresh()
+    }
+
+    /// Brings the app forward and shows the session (used by inbox & menu bar).
+    func focusSession(_ id: String) {
+        selectedSessionID = id
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // MARK: - Projets
 
     func addProject(from url: URL) async {

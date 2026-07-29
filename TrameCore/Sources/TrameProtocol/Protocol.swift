@@ -20,9 +20,11 @@ public struct SessionInfo: Codable, Identifiable, Hashable, Sendable {
     public var attention: String?
     /// Human-readable detail attached to the attention state.
     public var attentionMessage: String?
+    /// When the current attention state was raised.
+    public var attentionAt: Date?
 
     public init(id: String, name: String, cwd: String, command: [String], state: State, createdAt: Date,
-                attention: String? = nil, attentionMessage: String? = nil) {
+                attention: String? = nil, attentionMessage: String? = nil, attentionAt: Date? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
@@ -31,6 +33,7 @@ public struct SessionInfo: Codable, Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
         self.attention = attention
         self.attentionMessage = attentionMessage
+        self.attentionAt = attentionAt
     }
 
     public var isRunning: Bool {
@@ -57,6 +60,8 @@ public enum DaemonRequest: Codable, Sendable {
     case createSession(name: String?, cwd: String, command: [String], env: [String: String], cols: UInt16, rows: UInt16)
     case renameSession(id: String, name: String)
     case resize(id: String, cols: UInt16, rows: UInt16)
+    /// Dismisses the attention flag without touching the session.
+    case clearAttention(id: String)
     /// SIGTERM the process; the session sticks around in `exited` state.
     case stopSession(id: String)
     /// SIGKILL the process if needed, then drop the session and its scrollback.

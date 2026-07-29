@@ -82,6 +82,7 @@ final class Session {
         guard info.attention != attention || info.attentionMessage != message else { return false }
         info.attention = attention
         info.attentionMessage = message
+        info.attentionAt = attention == nil ? nil : Date()
         return true
     }
 

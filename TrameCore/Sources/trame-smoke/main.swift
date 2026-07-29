@@ -141,8 +141,12 @@ step("saisie utilisateur → attention effacée", cleared)
 attachClear.closeStream()
 
 try sendHook("Stop", sessionID: s1.id)
-let done = await waitForSession(client, id: s1.id) { $0.attention == "done" }
-step("Stop → attention 'done'", done)
+let done = await waitForSession(client, id: s1.id) { $0.attention == "done" && $0.attentionAt != nil }
+step("Stop → attention 'done' (horodatée)", done)
+
+try await client.call(.clearAttention(id: s1.id))
+let dismissed = await waitForSession(client, id: s1.id) { $0.attention == nil }
+step("clearAttention → attention effacée", dismissed)
 
 // --- 3. Code de sortie ---
 

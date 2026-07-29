@@ -4,7 +4,7 @@ import Foundation
 import TrameProtocol
 
 public final class Daemon {
-    public static let version = "0.2.0"
+    public static let version = "0.3.0"
 
     private let socketPath: String
     private let queue = DispatchQueue(label: "trame.daemon.main")
@@ -152,6 +152,13 @@ public final class Daemon {
         case let .resize(id, cols, rows):
             guard let session = sessions[id] else { return .error("unknown session \(id)") }
             session.resize(cols: cols, rows: rows)
+            return .ok
+
+        case let .clearAttention(id):
+            guard let session = sessions[id] else { return .error("unknown session \(id)") }
+            if session.setAttention(nil, message: nil) {
+                broadcast(.sessionsChanged)
+            }
             return .ok
 
         case let .stopSession(id):

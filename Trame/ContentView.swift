@@ -38,6 +38,16 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             List(selection: $model.selectedSessionID) {
+                if !model.attentionSessions.isEmpty {
+                    Section {
+                        ForEach(model.attentionSessions) { session in
+                            InboxRow(session: session)
+                        }
+                    } header: {
+                        Label("Inbox", systemImage: "tray.full")
+                            .foregroundStyle(Color.orange)
+                    }
+                }
                 ForEach(model.projects) { project in
                     Section {
                         ForEach(model.sessions(of: project)) { session in
@@ -144,6 +154,50 @@ struct ContentView: View {
                 description: Text(model.lastError ?? "Create a session with ⌘N to get started.")
             )
         }
+    }
+}
+
+struct InboxRow: View {
+    @EnvironmentObject private var model: AppModel
+    let session: SessionInfo
+
+    private var isDone: Bool { session.attention == "done" }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isDone ? "checkmark.circle.fill" : "bell.badge.fill")
+                .font(.caption)
+                .foregroundStyle(isDone ? Color.blue : Color.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.name)
+                    .font(.body)
+                Text(isDone ? "Claude finished its turn" : (session.attentionMessage ?? "Needs your attention"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer()
+            if let at = session.attentionAt {
+                Text(at, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Button {
+                Task { await model.dismissAttention(session.id) }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            model.selectedSessionID = session.id
+        }
+        .padding(.vertical, 2)
     }
 }
 
