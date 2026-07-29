@@ -218,6 +218,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 14)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .underPageBackgroundColor))
         } else {
             ContentUnavailableView {
@@ -233,6 +234,7 @@ struct ContentView: View {
                     .controlSize(.small)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .underPageBackgroundColor))
         }
     }
