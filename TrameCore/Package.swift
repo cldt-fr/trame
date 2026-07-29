@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "TrameClient", targets: ["TrameClient"]),
         .library(name: "TrameGit", targets: ["TrameGit"]),
         .library(name: "TrameMCP", targets: ["TrameMCP"]),
+        .library(name: "TrameUsage", targets: ["TrameUsage"]),
         .executable(name: "trame-core", targets: ["trame-core"]),
         .executable(name: "trame-smoke", targets: ["trame-smoke"]),
     ],
@@ -22,6 +23,8 @@ let package = Package(
         .testTarget(name: "TrameGitTests", dependencies: ["TrameGit"]),
         .target(name: "TrameMCP"),
         .testTarget(name: "TrameMCPTests", dependencies: ["TrameMCP"]),
+        .target(name: "TrameUsage"),
+        .testTarget(name: "TrameUsageTests", dependencies: ["TrameUsage"]),
         .executableTarget(name: "trame-core", dependencies: ["TrameDaemon"]),
         .executableTarget(name: "trame-smoke", dependencies: ["TrameClient", "TrameProtocol"]),
     ]

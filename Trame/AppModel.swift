@@ -7,6 +7,7 @@ import TrameDaemon
 import TrameGit
 import TrameMCP
 import TrameProtocol
+import TrameUsage
 import UserNotifications
 
 enum SessionDestination: Hashable {
@@ -32,6 +33,9 @@ final class AppModel: ObservableObject {
     @Published var meshMembers: [MeshMember] = MeshStore.load()
     @Published var showMeshPanel = false
     @Published var showPalette = false
+    @Published var showUsagePanel = false
+    /// Estimated cost of the selected session (F7.1), nil while unknown.
+    @Published var selectedSessionCost: Double?
     @Published var accounts: [Account] = AccountStore.load()
     private var sessionMetas: [String: SessionMeta] = SessionMetaStore.load()
 
@@ -106,6 +110,83 @@ final class AppModel: ObservableObject {
             }
             updateAttentionUX()
             pruneMeshMembers()
+            refreshUsage()
+        }
+    }
+
+    // MARK: - Usage & costs (F7)
+
+    /// Claude Code config dirs to scan: the default login plus every account.
+    var usageConfigDirs: [String] {
+        var dirs = [NSHomeDirectory() + "/.claude"]
+        for account in accounts {
+            if let dir = AccountStore.configDir(for: account.id) {
+                dirs.append(dir)
+            }
+        }
+        return dirs
+    }
+
+    private var costRefreshedAt = Date.distantPast
+    private var costSessionID: String?
+    private var thresholdCheckedAt = Date.distantPast
+    private var thresholdAlertedDay: Date?
+
+    private func refreshUsage() {
+        updateSelectedSessionCost()
+        checkDailyThreshold()
+    }
+
+    /// Session cost from its transcript (per config dir + cwd), throttled.
+    private func updateSelectedSessionCost() {
+        guard let session = selectedSession else {
+            selectedSessionCost = nil
+            costSessionID = nil
+            return
+        }
+        let selectionChanged = costSessionID != session.id
+        guard selectionChanged || Date().timeIntervalSince(costRefreshedAt) > 15 else { return }
+        if selectionChanged { selectedSessionCost = nil }
+        costRefreshedAt = Date()
+        costSessionID = session.id
+
+        let configDir = account(for: session).flatMap { AccountStore.configDir(for: $0.id) }
+            ?? NSHomeDirectory() + "/.claude"
+        let cwd = session.cwd
+        let created = session.createdAt
+        let id = session.id
+        Task.detached { [weak self] in
+            let events = UsageScanner.scan(configDir: configDir, cwd: cwd, since: created)
+            let cost = UsageAggregator.totals(events).costUSD
+            await MainActor.run {
+                guard let self, self.costSessionID == id else { return }
+                self.selectedSessionCost = events.isEmpty ? nil : cost
+            }
+        }
+    }
+
+    /// Daily spend alert (F7.3), checked every 5 minutes.
+    private func checkDailyThreshold() {
+        let limit = UserDefaults.standard.double(forKey: "dailyCostLimit")
+        guard limit > 0, Date().timeIntervalSince(thresholdCheckedAt) > 300 else { return }
+        thresholdCheckedAt = Date()
+        let today = Calendar.current.startOfDay(for: Date())
+        guard thresholdAlertedDay != today else { return }
+        let dirs = usageConfigDirs
+        Task.detached { [weak self] in
+            let cost = UsageAggregator.totals(UsageScanner.scan(configDirs: dirs, since: today)).costUSD
+            guard cost >= limit else { return }
+            await MainActor.run {
+                guard let self, self.thresholdAlertedDay != today else { return }
+                self.thresholdAlertedDay = today
+                let content = UNMutableNotificationContent()
+                content.title = "Daily spend limit reached"
+                content.body = String(format: "Today's estimated usage is $%.2f (limit $%.2f).", cost, limit)
+                content.sound = .default
+                UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(identifier: "trame-cost-\(today.timeIntervalSince1970)",
+                                          content: content, trigger: nil))
+            }
         }
     }
 

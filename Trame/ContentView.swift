@@ -35,7 +35,19 @@ struct ContentView: View {
             MeshPanelSheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showUsagePanel) {
+            UsagePanelSheet()
+                .environmentObject(model)
+        }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    model.showUsagePanel = true
+                } label: {
+                    Label("Usage", systemImage: "chart.bar")
+                }
+                .help("Usage & costs")
+            }
             ToolbarItem {
                 Button {
                     model.showMeshPanel = true
@@ -403,6 +415,9 @@ struct SessionHeader: View {
         }
         if case .exited(let code) = session.state {
             parts.append("exited (\(code))")
+        }
+        if let cost = model.selectedSessionCost {
+            parts.append(String(format: "~$%.2f", cost))
         }
         return parts.joined(separator: "  ·  ")
     }

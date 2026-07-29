@@ -13,6 +13,7 @@
 		7714A100000000000000000A /* TrameProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000006 /* TrameProtocol */; };
 		7714A100000000000000000C /* TrameGit in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000B /* TrameGit */; };
 		7714A100000000000000000E /* TrameMCP in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000D /* TrameMCP */; };
+		7714A1000000000000000010 /* TrameUsage in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000F /* TrameUsage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 				7714A100000000000000000A /* TrameProtocol in Frameworks */,
 				7714A100000000000000000C /* TrameGit in Frameworks */,
 				7714A100000000000000000E /* TrameMCP in Frameworks */,
+				7714A1000000000000000010 /* TrameUsage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +88,7 @@
 				7714A1000000000000000006 /* TrameProtocol */,
 				7714A100000000000000000B /* TrameGit */,
 				7714A100000000000000000D /* TrameMCP */,
+				7714A100000000000000000F /* TrameUsage */,
 			);
 			productName = Trame;
 			productReference = E6F076FE3019EBD2008D8CE7 /* Trame.app */;
@@ -402,6 +405,10 @@
 		7714A100000000000000000D /* TrameMCP */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TrameMCP;
+		};
+		7714A100000000000000000F /* TrameUsage */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameUsage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
