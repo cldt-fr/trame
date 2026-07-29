@@ -47,6 +47,15 @@ struct ContentView: View {
             TeamSheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showOnboarding) {
+            OnboardingSheet()
+                .environmentObject(model)
+        }
+        .onAppear {
+            if !UserDefaults.standard.bool(forKey: "onboardingDone") {
+                model.showOnboarding = true
+            }
+        }
         .alert("Rename Session", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }

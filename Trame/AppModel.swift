@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var showUsagePanel = false
     @Published var showDispatchSheet = false
     @Published var showTeamSheet = false
+    @Published var showOnboarding = false
     @Published var templates: [SessionTemplate] = TemplateStore.load()
     /// Estimated cost of the selected session (F7.1), nil while unknown.
     @Published var selectedSessionCost: Double?
@@ -73,6 +74,12 @@ final class AppModel: ObservableObject {
             }
         }
         await connect()
+
+        // Pick up .mcp.json servers added to registered projects since the
+        // last launch (idempotent, deduplicated by name).
+        for project in projects {
+            importProjectMCPConfig(root: project.root)
+        }
 
         // Safety net on top of daemon events.
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
@@ -524,6 +531,44 @@ final class AppModel: ObservableObject {
         let project = Project(id: UUID(), name: (root as NSString).lastPathComponent, root: root, lastCommand: nil)
         projects.append(project)
         ProjectStore.save(projects)
+        importProjectMCPConfig(root: root)
+    }
+
+    /// Auto-imports the servers of a project's `.mcp.json` into the Trame
+    /// library (deduplicated by name), so they show up as toggles and can be
+    /// attached to other projects. Claude Code loads the file natively for
+    /// sessions running in that repo either way.
+    func importProjectMCPConfig(root: String) {
+        let path = (root as NSString).appendingPathComponent(".mcp.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entries = json["mcpServers"] as? [String: Any] else { return }
+
+        var added = false
+        for (name, entryAny) in entries {
+            guard !mcpServers.contains(where: { $0.name == name }),
+                  let entry = entryAny as? [String: Any] else { continue }
+
+            let env: [MCPEnvVar] = (entry["env"] as? [String: String] ?? [:]).map { key, value in
+                MCPEnvVar(key: key, value: value, isSecret: false)
+            }
+            let server: MCPServer
+            if let url = entry["url"] as? String {
+                let type = (entry["type"] as? String) == "sse" ? MCPTransport.sse : .http
+                server = MCPServer(name: name, transport: type, url: url, env: env)
+            } else if let command = entry["command"] as? String {
+                let args = entry["args"] as? [String] ?? []
+                server = MCPServer(name: name, transport: .stdio,
+                                   commandLine: ([command] + args).joined(separator: " "), env: env)
+            } else {
+                continue
+            }
+            mcpServers.append(server)
+            added = true
+        }
+        if added {
+            MCPStore.save(servers: mcpServers, profiles: mcpProfiles)
+        }
     }
 
     /// Retire le projet de Trame ; ne touche ni au repo ni aux sessions.

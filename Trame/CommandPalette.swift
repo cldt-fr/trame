@@ -61,6 +61,8 @@ struct CommandPalette: View {
                                icon: "server.rack", iconColor: .secondary) { model.showMCPLibrary = true })
         all.append(PaletteItem(id: "mesh", title: "Mesh Panel", subtitle: nil,
                                icon: "antenna.radiowaves.left.and.right", iconColor: .secondary) { model.showMeshPanel = true })
+        all.append(PaletteItem(id: "onboarding", title: "Show Welcome Tour", subtitle: nil,
+                               icon: "sparkles", iconColor: .secondary) { model.showOnboarding = true })
 
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !trimmed.isEmpty else { return all }
