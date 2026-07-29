@@ -546,7 +546,9 @@ final class AppModel: ObservableObject {
 
         var added = false
         for (name, entryAny) in entries {
-            guard !mcpServers.contains(where: { $0.name == name }),
+            // The mesh integration owns the talkie-walkie entry.
+            guard name != "talkie-walkie",
+                  !mcpServers.contains(where: { $0.name == name }),
                   let entry = entryAny as? [String: Any] else { continue }
 
             let env: [MCPEnvVar] = (entry["env"] as? [String: String] ?? [:]).map { key, value in
