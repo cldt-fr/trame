@@ -11,30 +11,141 @@ struct OfficeView: View {
     @State private var traffic: [AppModel.MeshTrafficEntry] = []
     @State private var lastAnimated: Date = Date()
 
+    // Demo mode: a scripted team plays a whole feature cycle on a loop.
+    @State private var demoMode = false
+    @State private var demoStep = 0
+    @State private var demoSessions: [SessionInfo] = []
+    @State private var demoMessages: [AppModel.MeshTrafficEntry] = []
+
+    private static let demoRoles: [String: String] = [
+        "demo-chef": "chef", "demo-dev": "dev",
+        "demo-reviewer": "reviewer", "demo-tester": "tester",
+    ]
+
     var body: some View {
-        OfficeSceneView(sessions: model.sessions,
-                        meshRoles: Dictionary(uniqueKeysWithValues: model.meshMembers.map { ($0.id, $0.role) }),
-                        newMessages: traffic.filter { $0.timestamp > lastAnimated })
+        OfficeSceneView(
+            sessions: demoMode ? demoSessions : model.sessions,
+            meshRoles: demoMode ? Self.demoRoles
+                                : Dictionary(uniqueKeysWithValues: model.meshMembers.map { ($0.id, $0.role) }),
+            newMessages: demoMode ? demoMessages : traffic.filter { $0.timestamp > lastAnimated }
+        )
             .ignoresSafeArea()
             .overlay(alignment: .bottomLeading) {
                 legend
                     .padding(12)
             }
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    demoMode.toggle()
+                    demoStep = 0
+                    demoMessages = []
+                    if demoMode { applyDemoStep() }
+                } label: {
+                    Label(demoMode ? "Stop Demo" : "Play Demo",
+                          systemImage: demoMode ? "stop.fill" : "play.fill")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .background(.regularMaterial, in: Capsule())
+                .padding(12)
+            }
             .task {
                 lastAnimated = Date()
                 while !Task.isCancelled {
-                    let entries = await model.loadMeshTraffic()
-                    traffic = entries
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    if let newest = entries.first?.timestamp, newest > lastAnimated {
-                        lastAnimated = newest
+                    if !demoMode {
+                        let entries = await model.loadMeshTraffic()
+                        traffic = entries
+                        if let newest = entries.first?.timestamp, newest > lastAnimated {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            lastAnimated = newest
+                            continue
+                        }
                     }
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+            .task(id: demoMode) {
+                guard demoMode else { return }
+                while !Task.isCancelled && demoMode {
+                    try? await Task.sleep(nanoseconds: 2_300_000_000)
+                    demoStep += 1
+                    applyDemoStep()
                 }
             }
     }
 
+    // MARK: - Demo script
+
+    /// One step: per-role (activity, attention) plus messages fired on entry.
+    private struct DemoStep {
+        var states: [String: (activity: String?, attention: String?)]
+        var messages: [(from: String, to: String?, text: String)] = []
+    }
+
+    private static let script: [DemoStep] = [
+        DemoStep(states: ["chef": ("Thinking", nil)]),
+        DemoStep(states: ["chef": ("Thinking", nil)],
+                 messages: [("chef", "dev", "Implement the login feature with validation")]),
+        DemoStep(states: ["chef": (nil, "done"), "dev": ("Editing", nil)]),
+        DemoStep(states: ["dev": ("Running command", nil)]),
+        DemoStep(states: ["dev": (nil, "permission")]),
+        DemoStep(states: ["dev": ("Editing", nil)]),
+        DemoStep(states: ["dev": (nil, "done")],
+                 messages: [("dev", "reviewer", "Done! Please review my diff 🙏")]),
+        DemoStep(states: ["reviewer": ("Reading", nil), "dev": (nil, nil)]),
+        DemoStep(states: ["reviewer": ("Thinking", nil)],
+                 messages: [("reviewer", "dev", "LGTM — one nit on error handling")]),
+        DemoStep(states: ["reviewer": (nil, "done"), "dev": ("Editing", nil)]),
+        DemoStep(states: ["dev": (nil, "done")],
+                 messages: [("dev", "tester", "Fixed. Can you run the suite?")]),
+        DemoStep(states: ["tester": ("Running command", nil), "dev": (nil, nil)]),
+        DemoStep(states: ["tester": ("Running command", nil)]),
+        DemoStep(states: ["tester": (nil, "done")],
+                 messages: [("tester", nil, "All 142 tests green ✅")]),
+        DemoStep(states: ["chef": ("Thinking", nil), "tester": (nil, nil)]),
+        DemoStep(states: ["chef": (nil, "done"), "dev": (nil, nil), "reviewer": (nil, nil), "tester": (nil, nil)]),
+        DemoStep(states: ["chef": (nil, nil)]),
+    ]
+
+    private func applyDemoStep() {
+        let step = Self.script[demoStep % Self.script.count]
+        var current: [String: (String?, String?)] = [:]
+        for session in demoSessions {
+            let role = Self.demoRoles[session.id] ?? ""
+            current[role] = (session.activity, session.attention)
+        }
+        for (role, state) in step.states {
+            current[role] = state
+        }
+        let base = Date(timeIntervalSinceNow: -600)
+        demoSessions = Self.demoRoles
+            .sorted { $0.value < $1.value }
+            .enumerated()
+            .map { index, entry in
+                let (id, role) = entry
+                let state = current[role] ?? (nil, nil)
+                return SessionInfo(
+                    id: id, name: role, cwd: "/demo", command: ["claude"],
+                    state: .running, createdAt: base.addingTimeInterval(Double(index)),
+                    attention: state.1,
+                    attentionMessage: state.1 == "permission" ? "Claude needs your permission to use Bash" : nil,
+                    attentionAt: state.1 != nil ? Date() : nil,
+                    activity: state.0,
+                    activitySince: state.0 != nil ? Date() : nil
+                )
+            }
+        demoMessages = step.messages.map {
+            AppModel.MeshTrafficEntry(timestamp: Date(), from: $0.from, to: $0.to,
+                                      text: $0.text, isBroadcast: $0.to == nil)
+        }
+    }
+
     private var legend: some View {
         HStack(spacing: 14) {
+            if demoMode {
+                Label("demo", systemImage: "sparkles")
+                    .foregroundStyle(Color.purple)
+            }
             Label("working", systemImage: "display")
                 .foregroundStyle(Color.accentColor)
             Label("needs you", systemImage: "bell.badge.fill")
