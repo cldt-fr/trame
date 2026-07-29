@@ -5,6 +5,7 @@ import SwiftUI
 import TrameClient
 import TrameDaemon
 import TrameGit
+import TrameMCP
 import TrameProtocol
 import UserNotifications
 
@@ -25,6 +26,15 @@ final class AppModel: ObservableObject {
     @Published var projects: [Project] = ProjectStore.load()
     /// Projet présélectionné dans la feuille de création.
     @Published var createSheetProject: Project?
+    @Published var mcpServers: [MCPServer]
+    @Published var mcpProfiles: [MCPProfile]
+    @Published var showMCPLibrary = false
+
+    init() {
+        let library = MCPStore.load()
+        mcpServers = library.servers
+        mcpProfiles = library.profiles
+    }
 
     let client = DaemonClient()
     private var refreshTimer: Timer?
@@ -194,11 +204,63 @@ final class AppModel: ObservableObject {
         WorktreeLayout.isManagedWorktree(session.cwd)
     }
 
+    // MARK: - MCP library (F3)
+
+    /// Persists a server; secret values move to the Keychain and never touch
+    /// the library JSON.
+    func saveMCPServer(_ server: MCPServer) {
+        var stored = server
+        stored.env = server.env.map { envVar in
+            var v = envVar
+            if v.isSecret {
+                if !v.value.isEmpty {
+                    KeychainStore.set(v.value, account: MCPStore.secretAccount(serverID: server.id, key: v.key))
+                }
+                v.value = ""
+            }
+            return v
+        }
+        if let idx = mcpServers.firstIndex(where: { $0.id == server.id }) {
+            mcpServers[idx] = stored
+        } else {
+            mcpServers.append(stored)
+        }
+        MCPStore.save(servers: mcpServers, profiles: mcpProfiles)
+    }
+
+    func deleteMCPServer(_ server: MCPServer) {
+        for envVar in server.env where envVar.isSecret {
+            KeychainStore.delete(account: MCPStore.secretAccount(serverID: server.id, key: envVar.key))
+        }
+        mcpServers.removeAll { $0.id == server.id }
+        mcpProfiles = mcpProfiles.map { profile in
+            var p = profile
+            p.serverIDs.removeAll { $0 == server.id }
+            return p
+        }
+        MCPStore.save(servers: mcpServers, profiles: mcpProfiles)
+    }
+
+    func saveMCPProfile(_ profile: MCPProfile) {
+        if let idx = mcpProfiles.firstIndex(where: { $0.id == profile.id }) {
+            mcpProfiles[idx] = profile
+        } else {
+            mcpProfiles.append(profile)
+        }
+        MCPStore.save(servers: mcpServers, profiles: mcpProfiles)
+    }
+
+    func deleteMCPProfile(_ profile: MCPProfile) {
+        mcpProfiles.removeAll { $0.id == profile.id }
+        MCPStore.save(servers: mcpServers, profiles: mcpProfiles)
+    }
+
     // MARK: - Actions
 
     /// Crée une session dans un projet : sur le repo, ou dans un worktree créé
     /// à la volée (F1.2). Mémorise la commande comme défaut du projet (F1.9).
-    func createSession(project: Project, destination: SessionDestination, command: String) async {
+    func createSession(project: Project, destination: SessionDestination, command: String,
+                       mcpServerIDs: [UUID] = []) async {
         let cwd: String
         switch destination {
         case .repo:
@@ -226,15 +288,35 @@ final class AppModel: ObservableObject {
 
         if var updated = projects.first(where: { $0.id == project.id }) {
             updated.lastCommand = command.trimmingCharacters(in: .whitespaces)
+            updated.lastMCPServerIDs = mcpServerIDs
             projects = projects.map { $0.id == updated.id ? updated : $0 }
             ProjectStore.save(projects)
         }
-        await createSession(cwd: cwd, command: command, name: nil)
+
+        // Attach the selected MCP servers via --mcp-config: the file lives in
+        // Application Support (never in the repo) and secrets travel only
+        // through the session environment (F3.2).
+        var effectiveCommand = command
+        var sessionEnv: [String: String] = [:]
+        let servers = mcpServers.filter { mcpServerIDs.contains($0.id) }
+        if !servers.isEmpty {
+            let launch = await Task.detached { MCPStore.writeLaunchConfig(servers: servers) }.value
+            if let launch {
+                let trimmed = command.trimmingCharacters(in: .whitespaces)
+                if trimmed == "claude" || trimmed.hasPrefix("claude ") {
+                    effectiveCommand = trimmed + " --mcp-config \"\(launch.configPath)\""
+                    sessionEnv = launch.env
+                } else {
+                    lastError = "MCP servers are only attached when the command starts with “claude”."
+                }
+            }
+        }
+        await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv)
     }
 
     /// Runs `command` through a login shell so the user's PATH applies (claude,
     /// nvm, brew…). An empty command opens an interactive shell.
-    func createSession(cwd: String, command: String, name: String?) async {
+    func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:]) async {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv: [String]
         let trimmed = command.trimmingCharacters(in: .whitespaces)
@@ -247,7 +329,7 @@ final class AppModel: ObservableObject {
         do {
             let resp = try await client.call(.createSession(
                 name: name?.isEmpty == true ? nil : name,
-                cwd: cwd, command: argv, env: [:], cols: 120, rows: 32
+                cwd: cwd, command: argv, env: env, cols: 120, rows: 32
             ))
             if case .session(let info) = resp {
                 await refresh()

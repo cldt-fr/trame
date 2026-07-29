@@ -15,7 +15,19 @@ struct ContentView: View {
             CreateSessionSheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showMCPLibrary) {
+            MCPLibrarySheet()
+                .environmentObject(model)
+        }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    model.showMCPLibrary = true
+                } label: {
+                    Label("MCP Library", systemImage: "server.rack")
+                }
+                .help("MCP server library")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     openCreateSheet(project: model.selectedSession.flatMap { model.project(for: $0) })

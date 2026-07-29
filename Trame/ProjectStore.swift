@@ -7,6 +7,8 @@ struct Project: Codable, Identifiable, Hashable {
     let root: String
     /// F1.9 light : dernière commande utilisée, ré-appliquée par défaut.
     var lastCommand: String?
+    /// Derniers serveurs MCP attachés, ré-appliqués par défaut (F1.9/F3).
+    var lastMCPServerIDs: [UUID]?
 }
 
 enum ProjectStore {

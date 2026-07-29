@@ -12,6 +12,7 @@
 		7714A1000000000000000009 /* TrameClient in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000005 /* TrameClient */; };
 		7714A100000000000000000A /* TrameProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A1000000000000000006 /* TrameProtocol */; };
 		7714A100000000000000000C /* TrameGit in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000B /* TrameGit */; };
+		7714A100000000000000000E /* TrameMCP in Frameworks */ = {isa = PBXBuildFile; productRef = 7714A100000000000000000D /* TrameMCP */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 				7714A1000000000000000009 /* TrameClient in Frameworks */,
 				7714A100000000000000000A /* TrameProtocol in Frameworks */,
 				7714A100000000000000000C /* TrameGit in Frameworks */,
+				7714A100000000000000000E /* TrameMCP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +85,7 @@
 				7714A1000000000000000005 /* TrameClient */,
 				7714A1000000000000000006 /* TrameProtocol */,
 				7714A100000000000000000B /* TrameGit */,
+				7714A100000000000000000D /* TrameMCP */,
 			);
 			productName = Trame;
 			productReference = E6F076FE3019EBD2008D8CE7 /* Trame.app */;
@@ -281,6 +284,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -313,6 +317,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -393,6 +398,10 @@
 		7714A100000000000000000B /* TrameGit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TrameGit;
+		};
+		7714A100000000000000000D /* TrameMCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TrameMCP;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
