@@ -51,6 +51,12 @@ struct CommandPalette: View {
                 model.showCreateSheet = true
             })
         }
+        if !model.projects.isEmpty {
+            all.append(PaletteItem(id: "team", title: "Launch Agent Team", subtitle: "One objective, a whole team (⌘T)",
+                                   icon: "person.3.fill", iconColor: .accentColor) { model.showTeamSheet = true })
+            all.append(PaletteItem(id: "dispatch", title: "Dispatch an Objective", subtitle: "Send a prompt to running sessions (⌘D)",
+                                   icon: "paperplane", iconColor: .secondary) { model.showDispatchSheet = true })
+        }
         all.append(PaletteItem(id: "mcp", title: "MCP Library", subtitle: nil,
                                icon: "server.rack", iconColor: .secondary) { model.showMCPLibrary = true })
         all.append(PaletteItem(id: "mesh", title: "Mesh Panel", subtitle: nil,

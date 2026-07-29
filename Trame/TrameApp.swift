@@ -34,6 +34,14 @@ struct TrameApp: App {
                     model.showPalette.toggle()
                 }
                 .keyboardShortcut("k", modifiers: [.command])
+                Button("Launch Agent Team…") {
+                    model.showTeamSheet = true
+                }
+                .keyboardShortcut("t", modifiers: [.command])
+                Button("Dispatch an Objective…") {
+                    model.showDispatchSheet = true
+                }
+                .keyboardShortcut("d", modifiers: [.command])
             }
             CommandMenu("Sessions") {
                 ForEach(Array(model.sessions.prefix(9).enumerated()), id: \.element.id) { index, session in

@@ -5,10 +5,150 @@ struct TrameSettings: View {
         TabView {
             AccountsSettings()
                 .tabItem { Label("Accounts", systemImage: "person.crop.circle") }
+            TemplatesSettings()
+                .tabItem { Label("Templates", systemImage: "person.text.rectangle") }
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
-        .frame(width: 480, height: 340)
+        .frame(width: 540, height: 440)
+    }
+}
+
+/// Role templates used by New Session and the team launcher (V2).
+struct TemplatesSettings: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var editing: SessionTemplate?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            List {
+                ForEach(model.templates) { template in
+                    Button {
+                        editing = template
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.text.rectangle")
+                                .foregroundStyle(Color.accentColor)
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 6) {
+                                    Text(template.name)
+                                    if template.meshEnabled {
+                                        Label(template.meshRole, systemImage: "antenna.radiowaves.left.and.right")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.teal)
+                                    }
+                                }
+                                Text(template.mission.replacingOccurrences(of: "{objective}", with: "…"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
+                }
+            }
+            .listStyle(.inset)
+
+            Divider()
+            HStack {
+                Button {
+                    editing = SessionTemplate(name: "New Role")
+                } label: {
+                    Label("Add Template", systemImage: "plus")
+                }
+                Spacer()
+                Text("Use {objective} in the mission — it is replaced by the team objective at launch.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+        }
+        .sheet(item: $editing) { template in
+            TemplateEditor(template: template)
+                .environmentObject(model)
+        }
+    }
+}
+
+struct TemplateEditor: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State var template: SessionTemplate
+
+    private var isNew: Bool {
+        !model.templates.contains { $0.id == template.id }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(isNew ? "New Template" : template.name)
+                    .font(.title2.weight(.semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 6)
+
+            Form {
+                Section {
+                    TextField("Name", text: $template.name, prompt: Text("Docs writer"))
+                    TextField("Command", text: $template.command)
+                        .fontDesign(.monospaced)
+                    Picker("Permissions", selection: $template.preset) {
+                        ForEach(PermissionPreset.allCases) { p in
+                            Text(p.label).tag(p.rawValue)
+                        }
+                    }
+                }
+                Section {
+                    Toggle("Join talkie-walkie mesh", isOn: $template.meshEnabled)
+                    if template.meshEnabled {
+                        TextField("Mesh role", text: $template.meshRole, prompt: Text("docs"))
+                            .fontDesign(.monospaced)
+                    }
+                }
+                Section {
+                    TextField("Mission", text: $template.mission, axis: .vertical)
+                        .lineLimit(4...8)
+                } header: {
+                    Text("Mission")
+                } footer: {
+                    Text("Typed into the session once Claude is ready. {objective} is replaced by the team objective.")
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+
+            Divider()
+            HStack {
+                if !isNew {
+                    Button("Delete", role: .destructive) {
+                        model.deleteTemplate(template)
+                        dismiss()
+                    }
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    model.saveTemplate(template)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(template.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(16)
+        }
+        .frame(width: 480, height: 480)
     }
 }
 
