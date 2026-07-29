@@ -59,6 +59,36 @@ nonisolated enum SessionMetaStore {
     }
 }
 
+/// Continuously-saved description of the running sessions, so they can be
+/// recreated when the daemon comes back empty (reboot, protocol upgrade) —
+/// completes spec F1.7.
+struct SessionSnapshot: Codable, Equatable {
+    var name: String
+    var cwd: String
+    var command: [String]
+    var accountID: UUID?
+    var meshRole: String?
+    var wasRunning: Bool
+}
+
+nonisolated enum SessionSnapshotStore {
+    private static var fileURL: URL {
+        TramePaths.supportDirectory.appendingPathComponent("sessions-snapshot.json")
+    }
+
+    static func load() -> [SessionSnapshot] {
+        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+        return (try? JSONDecoder().decode([SessionSnapshot].self, from: data)) ?? []
+    }
+
+    static func save(_ snapshots: [SessionSnapshot]) {
+        try? FileManager.default.createDirectory(at: TramePaths.supportDirectory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(snapshots) {
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+}
+
 enum WorktreeLayout {
     /// Spec F1.2 : les worktrees gérés par Trame vivent sous ~/.trame/worktrees/<projet>/<branche>.
     static var base: String {

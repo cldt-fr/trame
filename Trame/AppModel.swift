@@ -86,15 +86,19 @@ final class AppModel: ObservableObject {
                 process.standardError = FileHandle.nullDevice
                 try process.run()
             })
-            // An older daemon speaks an older protocol: restart it. Running
-            // sessions are lost, acceptable while Trame is pre-1.0.
+            // An older daemon speaks an older protocol: restart it. The
+            // running sessions are recreated from the snapshot right after.
             if case .info(let info) = try await client.call(.daemonInfo), info.version != Daemon.version {
                 _ = try? await client.request(.shutdown)
                 return // onDisconnect re-enters connect() and respawns
             }
             daemonConnected = true
             lastError = nil
+            // Capture the snapshot before refresh() overwrites it with the
+            // (possibly empty) state of a freshly-respawned daemon.
+            let snapshot = SessionSnapshotStore.load()
             await refresh()
+            await restoreSessionsIfNeeded(from: snapshot)
         } catch {
             daemonConnected = false
             lastError = error.localizedDescription
@@ -111,7 +115,70 @@ final class AppModel: ObservableObject {
             updateAttentionUX()
             pruneMeshMembers()
             refreshUsage()
+            saveSessionSnapshot()
         }
+    }
+
+    // MARK: - Session persistence across daemon restarts (F1.7)
+
+    private var isRestoring = false
+    private var lastSnapshot: [SessionSnapshot]?
+
+    private func saveSessionSnapshot() {
+        guard !isRestoring else { return }
+        let snapshots = sessions.map { session in
+            SessionSnapshot(
+                name: session.name,
+                cwd: session.cwd,
+                command: session.command,
+                accountID: sessionMetas[session.id]?.accountID,
+                meshRole: meshMember(for: session.id)?.role,
+                wasRunning: session.isRunning
+            )
+        }
+        guard snapshots != lastSnapshot else { return }
+        lastSnapshot = snapshots
+        SessionSnapshotStore.save(snapshots)
+    }
+
+    /// When the daemon comes back with no sessions (reboot, crash, protocol
+    /// upgrade), recreates the ones that were running from the snapshot.
+    /// Deliberately-emptied states are safe: deleting the last session saves
+    /// an empty snapshot, so there is nothing to restore.
+    private func restoreSessionsIfNeeded(from snapshot: [SessionSnapshot]) async {
+        guard !isRestoring, sessions.isEmpty else { return }
+        let snapshots = snapshot.filter(\.wasRunning)
+        guard !snapshots.isEmpty else { return }
+
+        isRestoring = true
+        for snapshot in snapshots {
+            let cmdString = Self.commandString(from: snapshot.command)
+            let servers = mcpServers
+            var env: [String: String] = [:]
+            if let configPath = Self.mcpConfigPath(in: cmdString) {
+                env = await Task.detached {
+                    MCPStore.resolveEnv(configPath: configPath, servers: servers)
+                }.value
+            }
+            if let accountID = snapshot.accountID, let dir = AccountStore.configDir(for: accountID) {
+                env["CLAUDE_CONFIG_DIR"] = dir
+            }
+            let created = await createSession(cwd: snapshot.cwd, command: cmdString,
+                                              name: snapshot.name, env: env,
+                                              accountID: snapshot.accountID)
+            if let created, let role = snapshot.meshRole {
+                meshMembers = meshMembers.map { member in
+                    guard member.role == role else { return member }
+                    var updated = member
+                    updated.id = created.id
+                    return updated
+                }
+                MeshStore.save(meshMembers)
+            }
+        }
+        isRestoring = false
+        selectedSessionID = sessions.first?.id
+        await refresh()
     }
 
     // MARK: - Usage & costs (F7)
@@ -319,6 +386,7 @@ final class AppModel: ObservableObject {
 
     /// Drops members whose session no longer exists.
     private func pruneMeshMembers() {
+        guard !isRestoring else { return }
         let alive = Set(sessions.map(\.id))
         let pruned = meshMembers.filter { alive.contains($0.id) || restartingMeshIDs.contains($0.id) }
         if pruned.count != meshMembers.count {
