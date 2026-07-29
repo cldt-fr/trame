@@ -19,7 +19,19 @@ struct ContentView: View {
             MCPLibrarySheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showMeshPanel) {
+            MeshPanelSheet()
+                .environmentObject(model)
+        }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    model.showMeshPanel = true
+                } label: {
+                    Label("Mesh", systemImage: "antenna.radiowaves.left.and.right")
+                }
+                .help("Talkie-walkie mesh")
+            }
             ToolbarItem {
                 Button {
                     model.showMCPLibrary = true
@@ -116,7 +128,9 @@ struct ContentView: View {
     }
 
     private func sessionRow(_ session: SessionInfo) -> some View {
-        SessionRow(session: session, isWorktree: model.isWorktreeSession(session))
+        SessionRow(session: session,
+                   isWorktree: model.isWorktreeSession(session),
+                   meshRole: model.meshMember(for: session.id)?.role)
             .tag(session.id)
             .contextMenu {
                 if session.isRunning {
@@ -235,6 +249,7 @@ struct ProjectHeader: View {
 struct SessionRow: View {
     let session: SessionInfo
     let isWorktree: Bool
+    var meshRole: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -242,8 +257,16 @@ struct SessionRow: View {
                 .fill(session.isRunning ? Color.green : Color.secondary.opacity(0.5))
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.name)
-                    .font(.body)
+                HStack(spacing: 4) {
+                    Text(session.name)
+                        .font(.body)
+                    if let meshRole {
+                        Label(meshRole, systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.caption2)
+                            .foregroundStyle(Color.teal)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
                 HStack(spacing: 4) {
                     if isWorktree {
                         Image(systemName: "arrow.triangle.branch")

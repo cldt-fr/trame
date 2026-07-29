@@ -11,6 +11,8 @@ struct CreateSessionSheet: View {
     @State private var branch = ""
     @State private var command = "claude"
     @State private var selectedMCPIDs: Set<UUID> = []
+    @State private var joinMesh = false
+    @State private var meshRole = ""
 
     private var project: Project? {
         model.projects.first { $0.id == projectID } ?? model.projects.first
@@ -91,6 +93,21 @@ struct CreateSessionSheet: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Join talkie-walkie mesh", isOn: $joinMesh)
+                    .toggleStyle(.switch)
+                if joinMesh {
+                    LabeledContent("Mesh role") {
+                        TextField("backend, reviewer, tester…", text: $meshRole)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.body.monospaced())
+                    }
+                    Text("Trame allocates the port, shares the secret from the Keychain and wires PEERS to every current member. Other agents will address this session by its role.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -100,8 +117,12 @@ struct CreateSessionSheet: View {
                     let destination: SessionDestination = useWorktree ? .worktree(branch: branch) : .repo
                     let cmd = command
                     let mcpIDs = Array(selectedMCPIDs)
+                    let role: String? = joinMesh
+                        ? (meshRole.trimmingCharacters(in: .whitespaces).isEmpty ? project.name : meshRole)
+                        : nil
                     Task {
-                        await model.createSession(project: project, destination: destination, command: cmd, mcpServerIDs: mcpIDs)
+                        await model.createSession(project: project, destination: destination, command: cmd,
+                                                  mcpServerIDs: mcpIDs, meshRole: role)
                     }
                     dismiss()
                 }
@@ -118,6 +139,7 @@ struct CreateSessionSheet: View {
             }
             let known = Set(model.mcpServers.map(\.id))
             selectedMCPIDs = Set(project?.lastMCPServerIDs ?? []).intersection(known)
+            meshRole = useWorktree ? branch : (project?.name.lowercased() ?? "")
         }
     }
 }

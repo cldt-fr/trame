@@ -29,6 +29,8 @@ final class AppModel: ObservableObject {
     @Published var mcpServers: [MCPServer]
     @Published var mcpProfiles: [MCPProfile]
     @Published var showMCPLibrary = false
+    @Published var meshMembers: [MeshMember] = MeshStore.load()
+    @Published var showMeshPanel = false
 
     init() {
         let library = MCPStore.load()
@@ -100,6 +102,7 @@ final class AppModel: ObservableObject {
                 selectedSessionID = list.first?.id
             }
             updateAttentionUX()
+            pruneMeshMembers()
         }
     }
 
@@ -151,6 +154,34 @@ final class AppModel: ObservableObject {
                 if a.attention != b.attention { return a.attention == "permission" }
                 return (a.attentionAt ?? .distantPast) > (b.attentionAt ?? .distantPast)
             }
+    }
+
+    // MARK: - Mesh (F4)
+
+    func meshMember(for sessionID: String) -> MeshMember? {
+        meshMembers.first { $0.id == sessionID }
+    }
+
+    /// A member launched before the current topology existed needs a restart
+    /// to see the new peers (talkie-walkie reads PEERS at startup, F4.6).
+    func isMeshStale(_ member: MeshMember) -> Bool {
+        let currentPeers = Set(meshMembers.filter { $0.id != member.id }.map(\.role))
+        return currentPeers != Set(member.peerRolesAtLaunch)
+    }
+
+    func leaveMesh(sessionID: String) {
+        meshMembers.removeAll { $0.id == sessionID }
+        MeshStore.save(meshMembers)
+    }
+
+    /// Drops members whose session no longer exists.
+    private func pruneMeshMembers() {
+        let alive = Set(sessions.map(\.id))
+        let pruned = meshMembers.filter { alive.contains($0.id) }
+        if pruned.count != meshMembers.count {
+            meshMembers = pruned
+            MeshStore.save(meshMembers)
+        }
     }
 
     func dismissAttention(_ id: String) async {
@@ -260,7 +291,7 @@ final class AppModel: ObservableObject {
     /// Crée une session dans un projet : sur le repo, ou dans un worktree créé
     /// à la volée (F1.2). Mémorise la commande comme défaut du projet (F1.9).
     func createSession(project: Project, destination: SessionDestination, command: String,
-                       mcpServerIDs: [UUID] = []) async {
+                       mcpServerIDs: [UUID] = [], meshRole: String? = nil) async {
         let cwd: String
         switch destination {
         case .repo:
@@ -296,27 +327,50 @@ final class AppModel: ObservableObject {
         // Attach the selected MCP servers via --mcp-config: the file lives in
         // Application Support (never in the repo) and secrets travel only
         // through the session environment (F3.2).
-        var effectiveCommand = command
+        var effectiveCommand = command.trimmingCharacters(in: .whitespaces)
         var sessionEnv: [String: String] = [:]
-        let servers = mcpServers.filter { mcpServerIDs.contains($0.id) }
+        var servers = mcpServers.filter { mcpServerIDs.contains($0.id) }
+        let isClaudeCommand = effectiveCommand == "claude" || effectiveCommand.hasPrefix("claude ")
+
+        // Mesh auto-provisioning (F4.1): allocate a port, derive a unique
+        // role, wire PEERS to the current members and add the talkie-walkie
+        // MCP entry — zero manual configuration.
+        var newMember: MeshMember?
+        if let meshRole, isClaudeCommand {
+            let role = MeshStore.uniqueRole(from: meshRole, members: meshMembers)
+            let port = MeshStore.nextFreePort(members: meshMembers)
+            servers.append(MeshStore.talkieServer(role: role, port: port, peers: meshMembers))
+            newMember = MeshMember(id: "", role: role, port: port,
+                                   peerRolesAtLaunch: meshMembers.map(\.role))
+        }
+
         if !servers.isEmpty {
-            let launch = await Task.detached { MCPStore.writeLaunchConfig(servers: servers) }.value
-            if let launch {
-                let trimmed = command.trimmingCharacters(in: .whitespaces)
-                if trimmed == "claude" || trimmed.hasPrefix("claude ") {
-                    effectiveCommand = trimmed + " --mcp-config \"\(launch.configPath)\""
+            if isClaudeCommand {
+                let launch = await Task.detached { MCPStore.writeLaunchConfig(servers: servers) }.value
+                if let launch {
+                    effectiveCommand += " --mcp-config \"\(launch.configPath)\""
+                    if newMember != nil {
+                        effectiveCommand += " \(MeshStore.claudeFlag)"
+                    }
                     sessionEnv = launch.env
-                } else {
-                    lastError = "MCP servers are only attached when the command starts with “claude”."
                 }
+            } else {
+                lastError = "MCP servers and the mesh are only attached when the command starts with “claude”."
             }
         }
-        await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv)
+
+        let created = await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv)
+        if var member = newMember, let created {
+            member.id = created.id
+            meshMembers.append(member)
+            MeshStore.save(meshMembers)
+        }
     }
 
     /// Runs `command` through a login shell so the user's PATH applies (claude,
     /// nvm, brew…). An empty command opens an interactive shell.
-    func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:]) async {
+    @discardableResult
+    func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:]) async -> SessionInfo? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv: [String]
         let trimmed = command.trimmingCharacters(in: .whitespaces)
@@ -334,10 +388,12 @@ final class AppModel: ObservableObject {
             if case .session(let info) = resp {
                 await refresh()
                 selectedSessionID = info.id
+                return info
             }
         } catch {
             lastError = error.localizedDescription
         }
+        return nil
     }
 
     /// Supprime la session ET son worktree géré. La branche est conservée
@@ -368,6 +424,7 @@ final class AppModel: ObservableObject {
 
     func removeSession(_ id: String) async {
         _ = try? await client.call(.removeSession(id: id))
+        leaveMesh(sessionID: id)
         await refresh()
     }
 
