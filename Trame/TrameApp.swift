@@ -53,6 +53,13 @@ struct TrameApp: App {
             }
         }
 
+        // The live 3D open space — one desk per agent.
+        Window("Agent Office", id: "office") {
+            OfficeView()
+                .environmentObject(model)
+        }
+        .defaultSize(width: 900, height: 560)
+
         Settings {
             TrameSettings()
                 .environmentObject(model)

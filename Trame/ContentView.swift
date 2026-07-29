@@ -3,6 +3,7 @@ import TrameProtocol
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -73,6 +74,14 @@ struct ContentView: View {
             Text("The mesh role is not affected — other agents keep addressing this session the same way.")
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    openWindow(id: "office")
+                } label: {
+                    Label("Office", systemImage: "building.2")
+                }
+                .help("Open the live 3D agent office")
+            }
             ToolbarItem {
                 Button {
                     model.showTeamSheet = true
