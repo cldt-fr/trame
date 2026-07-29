@@ -11,6 +11,18 @@ struct ContentView: View {
         } detail: {
             detail
         }
+        .overlay(alignment: .top) {
+            if model.showPalette {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.001)
+                        .onTapGesture { model.showPalette = false }
+                    CommandPalette()
+                        .environmentObject(model)
+                        .padding(.top, 60)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
         .sheet(isPresented: $model.showCreateSheet) {
             CreateSessionSheet()
                 .environmentObject(model)

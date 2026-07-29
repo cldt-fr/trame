@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published var showMCPLibrary = false
     @Published var meshMembers: [MeshMember] = MeshStore.load()
     @Published var showMeshPanel = false
+    @Published var showPalette = false
     private var sessionMetas: [String: SessionMeta] = SessionMetaStore.load()
 
     init() {

@@ -30,6 +30,18 @@ struct TrameApp: App {
                     model.showCreateSheet = true
                 }
                 .keyboardShortcut("n", modifiers: [.command])
+                Button("Command Palette") {
+                    model.showPalette.toggle()
+                }
+                .keyboardShortcut("k", modifiers: [.command])
+            }
+            CommandMenu("Sessions") {
+                ForEach(Array(model.sessions.prefix(9).enumerated()), id: \.element.id) { index, session in
+                    Button(session.name) {
+                        model.focusSession(session.id)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+                }
             }
         }
 
