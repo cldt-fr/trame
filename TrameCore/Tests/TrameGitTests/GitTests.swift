@@ -49,4 +49,53 @@ private func makeTempRepo() throws -> String {
         #expect(try Git.listWorktrees(root: repo).count == 2)
         try Git.removeWorktree(root: repo, path: wtPath, force: true)
     }
+
+    @Test func reviewCycle() throws {
+        let repo = try makeTempRepo()
+        defer { try? FileManager.default.removeItem(atPath: repo) }
+        let base = Git.headCommit(root: repo)!
+
+        // Modify a tracked file, add an untracked one.
+        try "hello world".write(toFile: repo + "/README.md", atomically: true, encoding: .utf8)
+        try "new file".write(toFile: repo + "/new.txt", atomically: true, encoding: .utf8)
+
+        let changes = try Git.changedFiles(root: repo, base: base)
+        #expect(changes.map(\.path) == ["README.md", "new.txt"])
+        #expect(changes[0].additions == 1 && changes[0].deletions == 1)
+        #expect(changes[1].untracked)
+
+        #expect(Git.diff(root: repo, base: base, path: "README.md", untracked: false).contains("+hello world"))
+        #expect(Git.diff(root: repo, base: base, path: "new.txt", untracked: true).contains("+new file"))
+
+        // Commit everything; the diff vs base survives the commit.
+        try Git.run(["-c", "user.name=test", "-c", "user.email=test@test", "add", "-A"], in: repo)
+        try Git.run(["-c", "user.name=test", "-c", "user.email=test@test", "commit", "-m", "changes"], in: repo)
+        #expect(try Git.changedFiles(root: repo, base: base).count == 2)
+
+        // Nothing left uncommitted → commitAll must throw.
+        #expect(throws: GitError.self) {
+            try Git.commitAll(root: repo, message: "empty")
+        }
+    }
+
+    @Test func mergeWorktreeBranch() throws {
+        let repo = try makeTempRepo()
+        defer { try? FileManager.default.removeItem(atPath: repo) }
+        let wtPath = repo + "-wt"
+        defer { try? FileManager.default.removeItem(atPath: wtPath) }
+
+        try Git.addWorktree(root: repo, path: wtPath, branch: "feat/merge-me")
+        try "from worktree".write(toFile: wtPath + "/feature.txt", atomically: true, encoding: .utf8)
+        try Git.run(["-c", "user.name=test", "-c", "user.email=test@test", "add", "-A"], in: wtPath)
+        try Git.run(["-c", "user.name=test", "-c", "user.email=test@test", "commit", "-m", "feature"], in: wtPath)
+
+        try Git.merge(root: repo, branch: "feat/merge-me")
+        #expect(FileManager.default.fileExists(atPath: repo + "/feature.txt"))
+
+        // Dirty target → merge refused (F6.3 guard).
+        try "dirty".write(toFile: repo + "/README.md", atomically: true, encoding: .utf8)
+        #expect(throws: GitError.self) {
+            try Git.merge(root: repo, branch: "feat/merge-me")
+        }
+    }
 }

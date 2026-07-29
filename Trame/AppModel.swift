@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published var showMCPLibrary = false
     @Published var meshMembers: [MeshMember] = MeshStore.load()
     @Published var showMeshPanel = false
+    private var sessionMetas: [String: SessionMeta] = SessionMetaStore.load()
 
     init() {
         let library = MCPStore.load()
@@ -182,6 +183,16 @@ final class AppModel: ObservableObject {
             meshMembers = pruned
             MeshStore.save(meshMembers)
         }
+        let prunedMetas = sessionMetas.filter { alive.contains($0.key) }
+        if prunedMetas.count != sessionMetas.count {
+            sessionMetas = prunedMetas
+            SessionMetaStore.save(sessionMetas)
+        }
+    }
+
+    /// Review base for a session: the commit it started from, HEAD otherwise.
+    func baseCommit(for session: SessionInfo) -> String {
+        sessionMetas[session.id]?.baseCommit ?? "HEAD"
     }
 
     func dismissAttention(_ id: String) async {
@@ -398,13 +409,20 @@ final class AppModel: ObservableObject {
         } else {
             argv = [shell, "-l", "-c", trimmed]
         }
-        await Task.detached { HookInstaller.install(in: cwd) }.value
+        let baseCommit = await Task.detached { () -> String? in
+            HookInstaller.install(in: cwd)
+            return Git.headCommit(root: cwd)
+        }.value
         do {
             let resp = try await client.call(.createSession(
                 name: name?.isEmpty == true ? nil : name,
                 cwd: cwd, command: argv, env: env, cols: 120, rows: 32
             ))
             if case .session(let info) = resp {
+                if let baseCommit {
+                    sessionMetas[info.id] = SessionMeta(baseCommit: baseCommit)
+                    SessionMetaStore.save(sessionMetas)
+                }
                 await refresh()
                 selectedSessionID = info.id
                 return info

@@ -164,14 +164,30 @@ struct ContentView: View {
 
     // MARK: - Detail
 
+    @State private var detailTab: DetailTab = .terminal
+
+    enum DetailTab {
+        case terminal, changes
+    }
+
     @ViewBuilder
     private var detail: some View {
         if let session = model.selectedSession {
             VStack(spacing: 0) {
-                SessionHeader(session: session)
+                SessionHeader(session: session, tab: $detailTab)
                 Divider()
-                TerminalHostView(sessionID: session.id)
-                    .id(session.id)
+                // The terminal stays mounted (hidden) so the attach stream and
+                // scrollback survive switching to the Changes tab.
+                ZStack {
+                    TerminalHostView(sessionID: session.id)
+                        .id(session.id)
+                        .opacity(detailTab == .terminal ? 1 : 0)
+                        .allowsHitTesting(detailTab == .terminal)
+                    if detailTab == .changes {
+                        ChangesView(session: session)
+                            .id(session.id)
+                    }
+                }
             }
         } else {
             ContentUnavailableView(
@@ -308,6 +324,7 @@ struct SessionRow: View {
 struct SessionHeader: View {
     @EnvironmentObject private var model: AppModel
     let session: SessionInfo
+    @Binding var tab: ContentView.DetailTab
 
     var body: some View {
         HStack(spacing: 10) {
@@ -334,6 +351,13 @@ struct SessionHeader: View {
                     .truncationMode(.middle)
             }
             Spacer()
+            Picker("", selection: $tab) {
+                Text("Terminal").tag(ContentView.DetailTab.terminal)
+                Text("Changes").tag(ContentView.DetailTab.changes)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             if session.isRunning, let attention = session.attention, attention != "done" {
                 Label(session.attentionMessage ?? "Needs your attention", systemImage: "bell.badge.fill")
                     .font(.caption)

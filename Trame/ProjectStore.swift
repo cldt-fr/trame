@@ -31,6 +31,30 @@ enum ProjectStore {
     }
 }
 
+/// Per-session data the daemon does not know about (spec F6.1: the review
+/// diff is computed against the session's *starting point*, not HEAD).
+struct SessionMeta: Codable {
+    var baseCommit: String
+}
+
+nonisolated enum SessionMetaStore {
+    private static var fileURL: URL {
+        TramePaths.supportDirectory.appendingPathComponent("session-meta.json")
+    }
+
+    static func load() -> [String: SessionMeta] {
+        guard let data = try? Data(contentsOf: fileURL) else { return [:] }
+        return (try? JSONDecoder().decode([String: SessionMeta].self, from: data)) ?? [:]
+    }
+
+    static func save(_ metas: [String: SessionMeta]) {
+        try? FileManager.default.createDirectory(at: TramePaths.supportDirectory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(metas) {
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+}
+
 enum WorktreeLayout {
     /// Spec F1.2 : les worktrees gérés par Trame vivent sous ~/.trame/worktrees/<projet>/<branche>.
     static var base: String {

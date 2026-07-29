@@ -3,6 +3,10 @@ import Foundation
 public struct GitError: Error, LocalizedError {
     public let message: String
     public var errorDescription: String? { message }
+
+    public init(message: String) {
+        self.message = message
+    }
 }
 
 public struct Worktree: Equatable, Sendable {
@@ -106,5 +110,97 @@ public enum Git {
         if force { args.append("--force") }
         args.append(path)
         try run(args, in: root)
+    }
+
+    // MARK: - Review (spec F6)
+
+    public struct ChangedFile: Equatable, Sendable, Identifiable {
+        public let path: String
+        public let additions: Int
+        public let deletions: Int
+        public let untracked: Bool
+        public var id: String { path }
+
+        public init(path: String, additions: Int, deletions: Int, untracked: Bool) {
+            self.path = path
+            self.additions = additions
+            self.deletions = deletions
+            self.untracked = untracked
+        }
+    }
+
+    public static func headCommit(root: String) -> String? {
+        try? run(["rev-parse", "HEAD"], in: root)
+    }
+
+    /// Everything that changed (committed or not) since `base`, plus
+    /// untracked files.
+    public static func changedFiles(root: String, base: String) throws -> [ChangedFile] {
+        var files: [ChangedFile] = []
+        let numstat = try run(["diff", "--numstat", base], in: root)
+        for line in numstat.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 2)
+            guard parts.count == 3 else { continue }
+            files.append(ChangedFile(
+                path: String(parts[2]),
+                additions: Int(parts[0]) ?? 0,
+                deletions: Int(parts[1]) ?? 0,
+                untracked: false
+            ))
+        }
+        let status = try run(["status", "--porcelain"], in: root)
+        for line in status.split(separator: "\n") where line.hasPrefix("??") {
+            let path = String(line.dropFirst(3))
+            if !files.contains(where: { $0.path == path }) {
+                files.append(ChangedFile(path: path, additions: 0, deletions: 0, untracked: true))
+            }
+        }
+        return files.sorted { $0.path < $1.path }
+    }
+
+    /// Unified diff of one file against `base`; untracked files diff against
+    /// /dev/null so new content still shows up.
+    public static func diff(root: String, base: String, path: String, untracked: Bool) -> String {
+        if untracked {
+            // --no-index exits 1 when files differ; capture output regardless.
+            return (try? run(["diff", "--no-color", "--no-index", "/dev/null", path], in: root))
+                ?? (try? String(contentsOfFile: (root as NSString).appendingPathComponent(path), encoding: .utf8))
+                .map { $0.split(separator: "\n").map { "+\($0)" }.joined(separator: "\n") }
+                ?? ""
+        }
+        return (try? run(["diff", "--no-color", base, "--", path], in: root)) ?? ""
+    }
+
+    /// Stages everything and commits. Throws when there is nothing to commit.
+    public static func commitAll(root: String, message: String) throws {
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-m", message], in: root)
+    }
+
+    /// Pushes the current branch, setting the upstream on first push.
+    public static func push(root: String) throws {
+        guard let branch = currentBranch(root: root), !branch.isEmpty else {
+            throw GitError(message: "detached HEAD: no branch to push")
+        }
+        if (try? run(["rev-parse", "--abbrev-ref", "\(branch)@{upstream}"], in: root)) != nil {
+            try run(["push"], in: root)
+        } else {
+            try run(["push", "-u", "origin", branch], in: root)
+        }
+    }
+
+    /// Merges `branch` into the branch currently checked out at `root`.
+    /// Refuses when the target checkout has local changes (spec F6.3).
+    public static func merge(root: String, branch: String) throws {
+        let dirty = try run(["status", "--porcelain"], in: root)
+        guard dirty.isEmpty else {
+            throw GitError(message: "target checkout has uncommitted changes; commit or stash them first")
+        }
+        do {
+            try run(["merge", "--no-ff", branch], in: root)
+        } catch {
+            _ = try? run(["merge", "--abort"], in: root)
+            throw error
+        }
     }
 }
