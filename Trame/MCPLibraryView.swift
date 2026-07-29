@@ -7,6 +7,9 @@ struct MCPLibrarySheet: View {
     @State private var tab = 0
     @State private var editingServer: MCPServer?
     @State private var editingProfile: MCPProfile?
+    /// Reachability of http/sse servers (F3.5); stdio servers run per
+    /// session and are probed on the mesh panel instead.
+    @State private var health: [UUID: Bool] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,6 +64,12 @@ struct MCPLibrarySheet: View {
             MCPProfileEditor(profile: profile)
                 .environmentObject(model)
         }
+        .task {
+            let servers = model.mcpServers.filter { $0.transport != .stdio }
+            for server in servers {
+                health[server.id] = await HealthCheck.httpProbe(url: server.url)
+            }
+        }
     }
 
     private var serversTab: some View {
@@ -73,6 +82,14 @@ struct MCPLibrarySheet: View {
                         Image(systemName: "server.rack")
                             .foregroundStyle(Color.accentColor)
                             .frame(width: 18)
+                        if server.transport != .stdio {
+                            Circle()
+                                .fill(health[server.id] == nil ? Color.secondary.opacity(0.3)
+                                      : (health[server.id] == true ? Color.green : Color.red))
+                                .frame(width: 7, height: 7)
+                                .help(health[server.id] == true ? "Reachable"
+                                      : (health[server.id] == false ? "Unreachable" : "Checking…"))
+                        }
                         VStack(alignment: .leading, spacing: 1) {
                             Text(server.name)
                             Text(server.transport == .stdio ? server.commandLine : server.url)

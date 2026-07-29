@@ -13,6 +13,22 @@ struct MeshMember: Codable, Identifiable, Hashable {
     var peerRolesAtLaunch: [String]
 }
 
+/// A talkie-walkie instance running outside Trame (another machine, F4.4).
+/// It must share the mesh secret and be reachable at host:port.
+struct RemotePeer: Codable, Identifiable, Hashable {
+    var id: UUID
+    var role: String
+    var host: String
+    var port: Int
+
+    init(id: UUID = UUID(), role: String, host: String, port: Int) {
+        self.id = id
+        self.role = role
+        self.host = host
+        self.port = port
+    }
+}
+
 nonisolated enum MeshStore {
     /// Fixed identity for the talkie-walkie MCP entry so the shared secret
     /// rides the same Keychain + env-indirection path as any MCP secret.
@@ -33,6 +49,27 @@ nonisolated enum MeshStore {
         if let data = try? JSONEncoder().encode(members) {
             try? data.write(to: fileURL, options: .atomic)
         }
+    }
+
+    private static var remoteFileURL: URL {
+        TramePaths.supportDirectory.appendingPathComponent("mesh-remote.json")
+    }
+
+    static func loadRemote() -> [RemotePeer] {
+        guard let data = try? Data(contentsOf: remoteFileURL) else { return [] }
+        return (try? JSONDecoder().decode([RemotePeer].self, from: data)) ?? []
+    }
+
+    static func saveRemote(_ peers: [RemotePeer]) {
+        try? FileManager.default.createDirectory(at: TramePaths.supportDirectory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(peers) {
+            try? data.write(to: remoteFileURL, options: .atomic)
+        }
+    }
+
+    /// The shared mesh secret (for configuring a remote machine).
+    static func secret() -> String? {
+        KeychainStore.get(account: MCPStore.secretAccount(serverID: serverID, key: "INTERCOM_SECRET"))
     }
 
     /// Shared mesh secret, generated once and kept in the Keychain.
@@ -64,11 +101,18 @@ nonisolated enum MeshStore {
         return "\(slug)-\(n)"
     }
 
+    /// PEERS wire value for the given topology (local members + remote peers).
+    static func peersValue(members: [MeshMember], remote: [RemotePeer]) -> String {
+        (members.map { "\($0.role)=127.0.0.1:\($0.port)" }
+         + remote.map { "\($0.role)=\($0.host):\($0.port)" })
+            .joined(separator: ",")
+    }
+
     /// The talkie-walkie MCP server entry for a new member, wired to the
     /// current mesh topology.
-    static func talkieServer(role: String, port: Int, peers: [MeshMember]) -> MCPServer {
+    static func talkieServer(role: String, port: Int, peers: [MeshMember], remote: [RemotePeer]) -> MCPServer {
         ensureSecret()
-        let peersValue = peers.map { "\($0.role)=127.0.0.1:\($0.port)" }.joined(separator: ",")
+        let peersValue = peersValue(members: peers, remote: remote)
         return MCPServer(
             id: serverID,
             name: "talkie-walkie",

@@ -1,12 +1,16 @@
 import SwiftUI
 import TrameProtocol
 
-/// Talkie-walkie mesh: interactive graph of members (F4.2) and a live
-/// inspector of the messages they exchange (F4.3).
+/// Talkie-walkie mesh: interactive graph of members and remote peers
+/// (F4.2/F4.4), health probes, and a live message inspector (F4.3).
 struct MeshPanelSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var traffic: [AppModel.MeshTrafficEntry] = []
+    /// Reachability per node: "m-<sessionID>" and "r-<peerID>".
+    @State private var health: [String: Bool] = [:]
+    @State private var showAddRemote = false
+    @State private var secretCopied = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,17 +18,22 @@ struct MeshPanelSheet: View {
                 Text("Talkie-Walkie Mesh")
                     .font(.title2.weight(.semibold))
                 Spacer()
-                if !model.meshMembers.isEmpty {
-                    Text("\(model.meshMembers.count) member(s)")
+                Button {
+                    showAddRemote = true
+                } label: {
+                    Label("Add Remote Peer", systemImage: "globe.badge.chevron.backward")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                }
+                .popover(isPresented: $showAddRemote, arrowEdge: .bottom) {
+                    AddRemotePeerForm()
+                        .environmentObject(model)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 8)
 
-            if model.meshMembers.isEmpty {
+            if model.meshMembers.isEmpty && model.remotePeers.isEmpty {
                 ContentUnavailableView(
                     "No mesh members",
                     systemImage: "antenna.radiowaves.left.and.right",
@@ -32,7 +41,7 @@ struct MeshPanelSheet: View {
                 )
                 .frame(maxHeight: .infinity)
             } else {
-                MeshGraphView(traffic: traffic)
+                MeshGraphView(traffic: traffic, health: health)
                     .frame(height: 230)
                     .padding(.horizontal, 16)
 
@@ -42,8 +51,19 @@ struct MeshPanelSheet: View {
             }
 
             Divider()
-            HStack {
-                Text("Messages are read from the senders' session transcripts.")
+            HStack(spacing: 10) {
+                Button {
+                    if let secret = MeshStore.secret() {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(secret, forType: .string)
+                        secretCopied = true
+                    }
+                } label: {
+                    Label(secretCopied ? "Secret Copied" : "Copy Mesh Secret", systemImage: "key")
+                        .font(.caption)
+                }
+                .help("INTERCOM_SECRET to configure talkie-walkie on a remote machine")
+                Text("Remote peers need the same secret and a reachable network path (VPN/Tailscale recommended).")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -53,13 +73,35 @@ struct MeshPanelSheet: View {
             }
             .padding(14)
         }
-        .frame(width: 580, height: 560)
+        .frame(width: 600, height: 580)
         .task {
             while !Task.isCancelled {
                 traffic = await model.loadMeshTraffic()
+                await probeHealth()
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
+    }
+
+    private func probeHealth() async {
+        struct Probe: Sendable {
+            let key: String
+            let host: String
+            let port: Int
+        }
+        var probes: [Probe] = model.meshMembers.compactMap { member in
+            guard model.sessions.first(where: { $0.id == member.id })?.isRunning == true else { return nil }
+            return Probe(key: "m-\(member.id)", host: "127.0.0.1", port: member.port)
+        }
+        probes += model.remotePeers.map { Probe(key: "r-\($0.id)", host: $0.host, port: $0.port) }
+        let results = await Task.detached { () -> [String: Bool] in
+            var r: [String: Bool] = [:]
+            for probe in probes {
+                r[probe.key] = HealthCheck.tcpProbe(host: probe.host, port: probe.port)
+            }
+            return r
+        }.value
+        health = results
     }
 
     private var inspector: some View {
@@ -104,21 +146,77 @@ struct MeshPanelSheet: View {
     }
 }
 
-/// Circular graph: every member can talk to every other (full mesh).
+private struct AddRemotePeerForm: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var role = ""
+    @State private var host = ""
+    @State private var port = "8788"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Remote Peer")
+                .font(.headline)
+            TextField("Role", text: $role, prompt: Text("office-mac"))
+                .textFieldStyle(.roundedBorder)
+                .font(.caption.monospaced())
+            HStack(spacing: 6) {
+                TextField("Host", text: $host, prompt: Text("100.64.0.12"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                TextField("Port", text: $port)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption.monospaced())
+                    .frame(width: 60)
+            }
+            Text("The remote machine must run talkie-walkie with the same INTERCOM_SECRET (Copy Mesh Secret below). New sessions include it in PEERS; existing members show the restart badge.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 240)
+            HStack {
+                Spacer()
+                Button("Add") {
+                    if let p = Int(port), !role.isEmpty, !host.isEmpty {
+                        model.addRemotePeer(role: role, host: host, port: p)
+                        dismiss()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(role.isEmpty || host.isEmpty || Int(port) == nil)
+            }
+        }
+        .padding(14)
+    }
+}
+
+/// Circular graph: local members and remote peers, full mesh.
 private struct MeshGraphView: View {
     @EnvironmentObject private var model: AppModel
     let traffic: [AppModel.MeshTrafficEntry]
+    let health: [String: Bool]
+
+    private enum Node: Identifiable {
+        case member(MeshMember)
+        case remote(RemotePeer)
+
+        var id: String {
+            switch self {
+            case .member(let m): return "m-\(m.id)"
+            case .remote(let p): return "r-\(p.id)"
+            }
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
-            let members = model.meshMembers
-            let positions = nodePositions(count: members.count, in: geo.size)
+            let nodes: [Node] = model.meshMembers.map(Node.member) + model.remotePeers.map(Node.remote)
+            let positions = nodePositions(count: nodes.count, in: geo.size)
 
             ZStack {
-                // Full-mesh edges.
                 Path { path in
-                    for i in members.indices {
-                        for j in members.indices where j > i {
+                    for i in nodes.indices {
+                        for j in nodes.indices where j > i {
                             path.move(to: positions[i])
                             path.addLine(to: positions[j])
                         }
@@ -126,9 +224,14 @@ private struct MeshGraphView: View {
                 }
                 .stroke(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
 
-                ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
-                    nodeView(member)
-                        .position(positions[index])
+                ForEach(Array(nodes.enumerated()), id: \.element.id) { index, node in
+                    Group {
+                        switch node {
+                        case .member(let member): memberNode(member)
+                        case .remote(let peer): remoteNode(peer)
+                        }
+                    }
+                    .position(positions[index])
                 }
             }
         }
@@ -145,10 +248,11 @@ private struct MeshGraphView: View {
     }
 
     @ViewBuilder
-    private func nodeView(_ member: MeshMember) -> some View {
+    private func memberNode(_ member: MeshMember) -> some View {
         let session = model.sessions.first { $0.id == member.id }
         let isRunning = session?.isRunning == true
         let stale = model.isMeshStale(member)
+        let dead = isRunning && health["m-\(member.id)"] == false
         let recentlyActive = traffic.first { $0.from == member.role }
             .map { Date().timeIntervalSince($0.timestamp) < 120 } ?? false
 
@@ -158,8 +262,8 @@ private struct MeshGraphView: View {
                     .fill(isRunning ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
                     .frame(width: 46, height: 46)
                 Circle()
-                    .strokeBorder(stale ? Color.orange : (isRunning ? Color.accentColor : Color.secondary.opacity(0.4)),
-                                  lineWidth: stale ? 2 : 1.5)
+                    .strokeBorder(dead ? Color.red : (stale ? Color.orange : (isRunning ? Color.accentColor : Color.secondary.opacity(0.4))),
+                                  lineWidth: (dead || stale) ? 2 : 1.5)
                     .frame(width: 46, height: 46)
                 Image(systemName: recentlyActive ? "antenna.radiowaves.left.and.right" : "person.fill")
                     .font(.system(size: 16))
@@ -168,7 +272,11 @@ private struct MeshGraphView: View {
             Text(member.role)
                 .font(.caption.monospaced().weight(.medium))
                 .lineLimit(1)
-            if stale {
+            if dead {
+                Text("intercom down")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.red)
+            } else if stale {
                 Text("restart for peers")
                     .font(.system(size: 8))
                     .foregroundStyle(Color.orange)
@@ -189,8 +297,40 @@ private struct MeshGraphView: View {
             }
             Button("Leave Mesh") { model.leaveMesh(sessionID: member.id) }
         }
-        .help(stale
-              ? "Launched before the current member list — restart this session to see new peers."
-              : "127.0.0.1:\(member.port)")
+        .help(dead
+              ? "The talkie-walkie server is not listening on port \(member.port)."
+              : (stale
+                 ? "Launched before the current peer list — restart this session to see new peers."
+                 : "127.0.0.1:\(member.port)"))
+    }
+
+    @ViewBuilder
+    private func remoteNode(_ peer: RemotePeer) -> some View {
+        let reachable = health["r-\(peer.id)"]
+
+        VStack(spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.teal.opacity(0.12))
+                    .frame(width: 46, height: 46)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(reachable == false ? Color.red : Color.teal,
+                                  style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                    .frame(width: 46, height: 46)
+                Image(systemName: "globe")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.teal)
+            }
+            Text(peer.role)
+                .font(.caption.monospaced().weight(.medium))
+                .lineLimit(1)
+            Text(reachable == false ? "unreachable" : "remote")
+                .font(.system(size: 8))
+                .foregroundStyle(reachable == false ? Color.red : Color.secondary)
+        }
+        .contextMenu {
+            Button("Remove Remote Peer") { model.removeRemotePeer(peer) }
+        }
+        .help("\(peer.host):\(peer.port)")
     }
 }

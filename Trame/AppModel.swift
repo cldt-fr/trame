@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published var mcpProfiles: [MCPProfile]
     @Published var showMCPLibrary = false
     @Published var meshMembers: [MeshMember] = MeshStore.load()
+    @Published var remotePeers: [RemotePeer] = MeshStore.loadRemote()
     @Published var showMeshPanel = false
     @Published var showPalette = false
     @Published var showUsagePanel = false
@@ -282,6 +283,16 @@ final class AppModel: ObservableObject {
             ? "Claude finished its turn"
             : (session.attentionMessage?.isEmpty == false ? session.attentionMessage! : "Needs your attention")
         content.sound = .default
+
+        // Opt-in mobile relay (F5.5): minimal content, no prompt text.
+        let pushURL = UserDefaults.standard.string(forKey: "pushURL") ?? ""
+        if !pushURL.isEmpty {
+            HealthCheck.sendPush(
+                urlString: pushURL,
+                title: "Trame — \(session.name)",
+                body: attention == "done" ? "Finished its turn" : "Needs your permission"
+            )
+        }
         let request = UNNotificationRequest(
             identifier: "trame-\(session.id)-\(attention)",
             content: content,
@@ -316,8 +327,21 @@ final class AppModel: ObservableObject {
     /// A member launched before the current topology existed needs a restart
     /// to see the new peers (talkie-walkie reads PEERS at startup, F4.6).
     func isMeshStale(_ member: MeshMember) -> Bool {
-        let currentPeers = Set(meshMembers.filter { $0.id != member.id }.map(\.role))
+        let currentPeers = Set(meshMembers.filter { $0.id != member.id }.map(\.role)
+                               + remotePeers.map(\.role))
         return currentPeers != Set(member.peerRolesAtLaunch)
+    }
+
+    func addRemotePeer(role: String, host: String, port: Int) {
+        let peer = RemotePeer(role: MeshStore.uniqueRole(from: role, members: meshMembers),
+                              host: host, port: port)
+        remotePeers.append(peer)
+        MeshStore.saveRemote(remotePeers)
+    }
+
+    func removeRemotePeer(_ peer: RemotePeer) {
+        remotePeers.removeAll { $0.id == peer.id }
+        MeshStore.saveRemote(remotePeers)
     }
 
     /// One-click fix for the "restart for peers" badge: rewrites PEERS in the
@@ -335,10 +359,8 @@ final class AppModel: ObservableObject {
         }
         let configPath = String(cmdString[pathRange])
 
-        let peers = meshMembers
-            .filter { $0.id != member.id }
-            .map { "\($0.role)=127.0.0.1:\($0.port)" }
-            .joined(separator: ",")
+        let peers = MeshStore.peersValue(members: meshMembers.filter { $0.id != member.id },
+                                         remote: remotePeers)
         let servers = mcpServers
         let env = await Task.detached {
             MCPStore.updatePeersAndResolveEnv(configPath: configPath, peers: peers, servers: servers)
@@ -353,6 +375,7 @@ final class AppModel: ObservableObject {
             env["CLAUDE_CONFIG_DIR"] = configDir
         }
         let peerRoles = meshMembers.filter { $0.id != member.id }.map(\.role)
+            + remotePeers.map(\.role)
 
         // Remove the old session; the guard set keeps the membership alive
         // while no session carries this id.
@@ -640,9 +663,10 @@ final class AppModel: ObservableObject {
         if let meshRole, isClaudeCommand {
             let role = MeshStore.uniqueRole(from: meshRole, members: meshMembers)
             let port = MeshStore.nextFreePort(members: meshMembers)
-            servers.append(MeshStore.talkieServer(role: role, port: port, peers: meshMembers))
+            servers.append(MeshStore.talkieServer(role: role, port: port,
+                                                  peers: meshMembers, remote: remotePeers))
             newMember = MeshMember(id: "", role: role, port: port,
-                                   peerRolesAtLaunch: meshMembers.map(\.role))
+                                   peerRolesAtLaunch: meshMembers.map(\.role) + remotePeers.map(\.role))
         }
 
         if !servers.isEmpty {

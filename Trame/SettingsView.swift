@@ -89,6 +89,7 @@ struct AccountsSettings: View {
 
 struct GeneralSettings: View {
     @AppStorage("standardAllowlist") private var standardAllowlist = PermissionPreset.defaultAllowlist
+    @AppStorage("pushURL") private var pushURL = ""
 
     var body: some View {
         Form {
@@ -101,6 +102,16 @@ struct GeneralSettings: View {
                 Text("Standard preset allowlist")
             } footer: {
                 Text("Comma-separated tools pre-approved by the Standard permission preset (e.g. Read, Bash(git status:*)).")
+            }
+
+            Section {
+                TextField("Push URL", text: $pushURL, prompt: Text("https://ntfy.sh/your-topic"))
+                    .fontDesign(.monospaced)
+                    .font(.caption)
+            } header: {
+                Text("Mobile push relay")
+            } footer: {
+                Text("Optional. Blocking events (permission requests, finished turns) are POSTed to this URL — works with ntfy.sh or any compatible endpoint. Only the session name and event type are sent, never prompt contents.")
             }
         }
         .formStyle(.grouped)
