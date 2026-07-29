@@ -36,7 +36,7 @@ nonisolated enum TemplateStore {
             preset: "standard",
             meshEnabled: true,
             meshRole: "dev",
-            mission: "Implement the objective below. When you are done, use talkie-walkie to ask the reviewer to check your changes, and address their feedback. Objective: "
+            mission: "Implement the objective below. When you are done, use talkie-walkie to ask the reviewer to check your changes, and address their feedback. Objective: {objective}"
         ),
         SessionTemplate(
             name: "Reviewer",

@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     @Published var showPalette = false
     @Published var showUsagePanel = false
     @Published var showDispatchSheet = false
+    @Published var showTeamSheet = false
     @Published var templates: [SessionTemplate] = TemplateStore.load()
     /// Estimated cost of the selected session (F7.1), nil while unknown.
     @Published var selectedSessionCost: Double?
@@ -604,7 +605,8 @@ final class AppModel: ObservableObject {
                        mcpServerIDs: [UUID] = [], meshRole: String? = nil,
                        permissionPreset: PermissionPreset = .prudent,
                        accountID: UUID = AccountStore.defaultAccountID,
-                       initialPrompt: String? = nil) async {
+                       initialPrompt: String? = nil,
+                       meshPrecomputed: (role: String, port: Int, peers: [MeshMember])? = nil) async {
         let cwd: String
         switch destination {
         case .repo:
@@ -664,12 +666,24 @@ final class AppModel: ObservableObject {
         // MCP entry — zero manual configuration.
         var newMember: MeshMember?
         if let meshRole, isClaudeCommand {
-            let role = MeshStore.uniqueRole(from: meshRole, members: meshMembers)
-            let port = MeshStore.nextFreePort(members: meshMembers)
+            // Team launches precompute the whole topology so every member is
+            // born knowing every other — no restart-for-peers dance.
+            let role: String
+            let port: Int
+            let peerList: [MeshMember]
+            if let pre = meshPrecomputed {
+                role = pre.role
+                port = pre.port
+                peerList = pre.peers
+            } else {
+                role = MeshStore.uniqueRole(from: meshRole, members: meshMembers)
+                port = MeshStore.nextFreePort(members: meshMembers)
+                peerList = meshMembers
+            }
             servers.append(MeshStore.talkieServer(role: role, port: port,
-                                                  peers: meshMembers, remote: remotePeers))
+                                                  peers: peerList, remote: remotePeers))
             newMember = MeshMember(id: "", role: role, port: port,
-                                   peerRolesAtLaunch: meshMembers.map(\.role) + remotePeers.map(\.role))
+                                   peerRolesAtLaunch: peerList.map(\.role) + remotePeers.map(\.role))
         }
 
         if !servers.isEmpty {
@@ -823,11 +837,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Creates a mesh "chef" session that receives the objective as its
-    /// mission and coordinates the existing peers over talkie-walkie.
-    func createChefSession(project: Project, objective: String) async {
-        let peerRoles = meshMembers.map(\.role) + remotePeers.map(\.role)
-        let mission = """
+    private func chefMission(peerRoles: [String], objective: String) -> String {
+        """
         You are the orchestrator of a team of Claude agents connected over the talkie-walkie MCP. \
         Your peers: \(peerRoles.joined(separator: ", ")). \
         Break the objective below into tasks, delegate each task to the most suitable peer with send_message, \
@@ -835,10 +846,60 @@ final class AppModel: ObservableObject {
         and keep going until the objective is fully met. Finish with a summary of what each agent did. \
         Objective: \(objective)
         """
+    }
+
+    /// Creates a mesh "chef" session that receives the objective as its
+    /// mission and coordinates the existing peers over talkie-walkie.
+    func createChefSession(project: Project, objective: String) async {
+        let peerRoles = meshMembers.map(\.role) + remotePeers.map(\.role)
         await createSession(project: project, destination: .repo, command: "claude",
                             mcpServerIDs: project.lastMCPServerIDs ?? [],
                             meshRole: "chef", permissionPreset: .standard,
-                            initialPrompt: mission)
+                            initialPrompt: chefMission(peerRoles: peerRoles, objective: objective))
+    }
+
+    /// One-click team launch (the beginner path): spawns one session per
+    /// selected role plus a chef, with the full mesh topology precomputed so
+    /// nobody needs a restart, and the objective woven into every mission.
+    func launchTeam(project: Project, templates chosen: [SessionTemplate], objective: String) async {
+        // Reserve a role and port for every future member (chef included).
+        var virtual = meshMembers
+        var planned: [(template: SessionTemplate?, role: String, port: Int)] = []
+        for template in chosen {
+            let raw = template.meshRole.isEmpty ? template.name.lowercased() : template.meshRole
+            let role = MeshStore.uniqueRole(from: raw, members: virtual)
+            let port = MeshStore.nextFreePort(members: virtual)
+            virtual.append(MeshMember(id: "planned-\(role)", role: role, port: port, peerRolesAtLaunch: []))
+            planned.append((template, role, port))
+        }
+        let chefRole = MeshStore.uniqueRole(from: "chef", members: virtual)
+        let chefPort = MeshStore.nextFreePort(members: virtual)
+        virtual.append(MeshMember(id: "planned-chef", role: chefRole, port: chefPort, peerRolesAtLaunch: []))
+        planned.append((nil, chefRole, chefPort))
+
+        for (template, role, port) in planned {
+            let peers = virtual.filter { $0.role != role }
+            let command: String
+            let preset: PermissionPreset
+            let mission: String
+            if let template {
+                command = template.command
+                preset = PermissionPreset(rawValue: template.preset) ?? .standard
+                mission = template.mission.contains("{objective}")
+                    ? template.mission.replacingOccurrences(of: "{objective}", with: objective)
+                    : template.mission + "\n\nTeam objective, for context: \(objective)"
+            } else {
+                command = "claude"
+                preset = .standard
+                mission = chefMission(peerRoles: peers.map(\.role), objective: objective)
+            }
+            await createSession(project: project, destination: .repo, command: command,
+                                mcpServerIDs: project.lastMCPServerIDs ?? [],
+                                meshRole: role, permissionPreset: preset,
+                                initialPrompt: mission,
+                                meshPrecomputed: (role, port, peers))
+        }
+        showMeshPanel = true
     }
 
     func renameSession(_ id: String, to name: String) async {

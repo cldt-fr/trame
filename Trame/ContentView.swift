@@ -43,6 +43,10 @@ struct ContentView: View {
             DispatchSheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showTeamSheet) {
+            TeamSheet()
+                .environmentObject(model)
+        }
         .alert("Rename Session", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }
@@ -60,6 +64,15 @@ struct ContentView: View {
             Text("The mesh role is not affected — other agents keep addressing this session the same way.")
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    model.showTeamSheet = true
+                } label: {
+                    Label("Team", systemImage: "person.3.fill")
+                }
+                .help("Launch an agent team on one objective")
+                .disabled(model.projects.isEmpty)
+            }
             ToolbarItem {
                 Button {
                     model.showDispatchSheet = true
@@ -280,14 +293,20 @@ struct ContentView: View {
             ContentUnavailableView {
                 Label("No Session", systemImage: "terminal")
             } description: {
-                Text(model.lastError ?? "Create a session with ⌘N, or press ⌘K.")
+                Text(model.lastError ?? "Start a single Claude session — or launch a whole agent team on one objective.")
             } actions: {
                 if !model.projects.isEmpty {
-                    Button("New Session") {
-                        openCreateSheet(project: model.projects.first)
+                    HStack(spacing: 10) {
+                        Button {
+                            model.showTeamSheet = true
+                        } label: {
+                            Label("Launch Agent Team", systemImage: "person.3.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("New Session") {
+                            openCreateSheet(project: model.projects.first)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
