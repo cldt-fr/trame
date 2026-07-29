@@ -603,6 +603,13 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func renameSession(_ id: String, to name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        _ = try? await client.call(.renameSession(id: id, name: trimmed))
+        await refresh()
+    }
+
     func stopSession(_ id: String) async {
         _ = try? await client.call(.stopSession(id: id))
         await refresh()

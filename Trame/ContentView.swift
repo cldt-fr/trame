@@ -39,6 +39,22 @@ struct ContentView: View {
             UsagePanelSheet()
                 .environmentObject(model)
         }
+        .alert("Rename Session", isPresented: Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                if let session = renameTarget {
+                    let name = renameText
+                    Task { await model.renameSession(session.id, to: name) }
+                }
+                renameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        } message: {
+            Text("The mesh role is not affected — other agents keep addressing this session the same way.")
+        }
         .toolbar {
             ToolbarItem {
                 Button {
@@ -79,6 +95,16 @@ struct ContentView: View {
     private func openCreateSheet(project: Project?) {
         model.createSheetProject = project ?? model.projects.first
         model.showCreateSheet = true
+    }
+
+    // MARK: - Rename
+
+    @State private var renameTarget: SessionInfo?
+    @State private var renameText = ""
+
+    private func beginRename(_ session: SessionInfo) {
+        renameText = session.name
+        renameTarget = session
     }
 
     // MARK: - Sidebar
@@ -168,6 +194,7 @@ struct ContentView: View {
                    account: model.account(for: session))
             .tag(session.id)
             .contextMenu {
+                Button("Rename…") { beginRename(session) }
                 if session.isRunning {
                     Button("Stop") {
                         Task { await model.stopSession(session.id) }
@@ -398,6 +425,8 @@ struct SessionHeader: View {
     @EnvironmentObject private var model: AppModel
     let session: SessionInfo
     @Binding var tab: ContentView.DetailTab
+    @State private var showRename = false
+    @State private var renameText = ""
 
     private var subtitle: String {
         var parts: [String] = []
@@ -473,6 +502,10 @@ struct SessionHeader: View {
             .fixedSize()
 
             Menu {
+                Button("Rename…") {
+                    renameText = session.name
+                    showRename = true
+                }
                 if session.isRunning {
                     Button("Stop") {
                         Task { await model.stopSession(session.id) }
@@ -496,5 +529,15 @@ struct SessionHeader: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
+        .alert("Rename Session", isPresented: $showRename) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                let name = renameText
+                Task { await model.renameSession(session.id, to: name) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The mesh role is not affected — other agents keep addressing this session the same way.")
+        }
     }
 }
