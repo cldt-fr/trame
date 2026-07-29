@@ -9,7 +9,7 @@ struct MeshPanelSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Talkie-Walkie Mesh")
-                .font(.title3.bold())
+                .font(.title2.weight(.semibold))
 
             if model.meshMembers.isEmpty {
                 ContentUnavailableView(
@@ -60,7 +60,8 @@ struct MeshPanelSheet: View {
 
             HStack {
                 Spacer()
-                Button("Close") { dismiss() }
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.cancelAction)
             }
         }
