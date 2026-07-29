@@ -17,6 +17,14 @@ final class Session {
     private let queue: DispatchQueue
     var onExit: ((Session) -> Void)?
 
+    // Initial mission injection (V2/F1.5): typed into the PTY once the
+    // program has produced output and gone quiet — i.e. claude is at its
+    // prompt — with a hard fallback so it always fires.
+    private var pendingInitialInput: String?
+    private var initialInputTimer: DispatchSourceTimer?
+    private var lastOutputAt: Date?
+    private var startedAt = Date()
+
     init(info: SessionInfo, masterFD: Int32, pid: pid_t, queue: DispatchQueue) {
         self.info = info
         self.masterFD = masterFD
@@ -39,6 +47,7 @@ final class Session {
                 return
             }
             if chunk.isEmpty { return } // EAGAIN: drained for now
+            lastOutputAt = Date()
             appendScrollback(chunk)
             for conn in attached.values {
                 conn.sendRaw(chunk)
@@ -77,6 +86,36 @@ final class Session {
 
     func rename(_ name: String) {
         info.name = name
+    }
+
+    /// Types `input` into the PTY once the program has been quiet for 2s
+    /// after producing output (claude sitting at its prompt), or after 25s
+    /// no matter what.
+    func scheduleInitialInput(_ input: String) {
+        pendingInitialInput = input
+        startedAt = Date()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 1, repeating: .milliseconds(500))
+        timer.setEventHandler { [weak self] in self?.checkInitialInput() }
+        initialInputTimer = timer
+        timer.resume()
+    }
+
+    private func checkInitialInput() {
+        guard let input = pendingInitialInput, info.isRunning else {
+            initialInputTimer?.cancel()
+            initialInputTimer = nil
+            pendingInitialInput = nil
+            return
+        }
+        let quietAfterOutput = lastOutputAt.map { Date().timeIntervalSince($0) > 2 } ?? false
+        let timedOut = Date().timeIntervalSince(startedAt) > 25
+        guard quietAfterOutput || timedOut else { return }
+        pendingInitialInput = nil
+        initialInputTimer?.cancel()
+        initialInputTimer = nil
+        writeInput(Data((input + "\r").utf8))
+        DaemonLog.log("session \(info.id): initial mission injected")
     }
 
     /// Returns true when the activity label actually changed. The start time

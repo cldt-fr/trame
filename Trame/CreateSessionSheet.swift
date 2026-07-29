@@ -16,6 +16,8 @@ struct CreateSessionSheet: View {
     @State private var preset: PermissionPreset = .prudent
     @State private var accountID: UUID = AccountStore.defaultAccountID
     @State private var showOptions = false
+    @State private var templateID: UUID?
+    @State private var mission = ""
     @AppStorage("standardAllowlist") private var standardAllowlist = PermissionPreset.defaultAllowlist
 
     private var project: Project? {
@@ -47,6 +49,23 @@ struct CreateSessionSheet: View {
                             Text(p.name).tag(Optional(p.id))
                         }
                     }
+                    if !model.templates.isEmpty {
+                        Picker("Role template", selection: $templateID) {
+                            Text("None").tag(UUID?.none)
+                            ForEach(model.templates) { t in
+                                Text(t.name).tag(Optional(t.id))
+                            }
+                        }
+                        .onChange(of: templateID) { _, id in
+                            guard let template = model.templates.first(where: { $0.id == id }) else { return }
+                            command = template.command
+                            preset = PermissionPreset(rawValue: template.preset) ?? .prudent
+                            joinMesh = template.meshEnabled
+                            if template.meshEnabled { meshRole = template.meshRole }
+                            mission = template.mission
+                            showOptions = true
+                        }
+                    }
                     Picker("Where", selection: $useWorktree) {
                         Text("Current branch").tag(false)
                         Text("New worktree").tag(true)
@@ -58,6 +77,10 @@ struct CreateSessionSheet: View {
                     }
                     TextField("Command", text: $command, prompt: Text("claude (empty = shell)"))
                         .fontDesign(.monospaced)
+                    TextField("Mission", text: $mission,
+                              prompt: Text("Optional — typed into the session once Claude is ready"),
+                              axis: .vertical)
+                        .lineLimit(2...5)
                     if !model.accounts.isEmpty {
                         Picker("Account", selection: $accountID) {
                             Label("Default", systemImage: "circle.fill")
@@ -209,10 +232,12 @@ struct CreateSessionSheet: View {
             : nil
         let chosenPreset = preset
         let chosenAccount = accountID
+        let trimmedMission = mission.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             await model.createSession(project: project, destination: destination, command: cmd,
                                       mcpServerIDs: mcpIDs, meshRole: role,
-                                      permissionPreset: chosenPreset, accountID: chosenAccount)
+                                      permissionPreset: chosenPreset, accountID: chosenAccount,
+                                      initialPrompt: trimmedMission.isEmpty ? nil : trimmedMission)
         }
         dismiss()
     }

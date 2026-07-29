@@ -4,7 +4,7 @@ import Foundation
 import TrameProtocol
 
 public final class Daemon {
-    public static let version = "0.4.0"
+    public static let version = "0.5.0"
 
     private let socketPath: String
     private let queue = DispatchQueue(label: "trame.daemon.main")
@@ -140,8 +140,14 @@ public final class Daemon {
             let infos = sessions.values.map(\.info).sorted { $0.createdAt < $1.createdAt }
             return .sessions(infos)
 
-        case let .createSession(name, cwd, command, env, cols, rows):
-            return createSession(name: name, cwd: cwd, command: command, env: env, cols: cols, rows: rows)
+        case let .createSession(name, cwd, command, env, cols, rows, initialInput):
+            return createSession(name: name, cwd: cwd, command: command, env: env, cols: cols, rows: rows,
+                                 initialInput: initialInput)
+
+        case let .sendInput(id, text):
+            guard let session = sessions[id] else { return .error("unknown session \(id)") }
+            session.writeInput(Data((text + "\r").utf8))
+            return .ok
 
         case let .renameSession(id, name):
             guard let session = sessions[id] else { return .error("unknown session \(id)") }
@@ -178,7 +184,8 @@ public final class Daemon {
         }
     }
 
-    private func createSession(name: String?, cwd: String, command: [String], env: [String: String], cols: UInt16, rows: UInt16) -> DaemonResponse {
+    private func createSession(name: String?, cwd: String, command: [String], env: [String: String], cols: UInt16, rows: UInt16,
+                               initialInput: String? = nil) -> DaemonResponse {
         guard !command.isEmpty else { return .error("empty command") }
         guard FileManager.default.fileExists(atPath: cwd) else { return .error("cwd does not exist: \(cwd)") }
 
@@ -222,6 +229,9 @@ public final class Daemon {
         }
         sessions[id] = session
         session.startReading()
+        if let initialInput, !initialInput.isEmpty {
+            session.scheduleInitialInput(initialInput)
+        }
         DaemonLog.log("session \(id) '\(info.name)' spawned pid \(pid) in \(cwd)")
         broadcast(.sessionsChanged)
         return .session(info)

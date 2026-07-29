@@ -35,6 +35,8 @@ final class AppModel: ObservableObject {
     @Published var showMeshPanel = false
     @Published var showPalette = false
     @Published var showUsagePanel = false
+    @Published var showDispatchSheet = false
+    @Published var templates: [SessionTemplate] = TemplateStore.load()
     /// Estimated cost of the selected session (F7.1), nil while unknown.
     @Published var selectedSessionCost: Double?
     @Published var accounts: [Account] = AccountStore.load()
@@ -601,7 +603,8 @@ final class AppModel: ObservableObject {
     func createSession(project: Project, destination: SessionDestination, command: String,
                        mcpServerIDs: [UUID] = [], meshRole: String? = nil,
                        permissionPreset: PermissionPreset = .prudent,
-                       accountID: UUID = AccountStore.defaultAccountID) async {
+                       accountID: UUID = AccountStore.defaultAccountID,
+                       initialPrompt: String? = nil) async {
         let cwd: String
         switch destination {
         case .repo:
@@ -690,7 +693,8 @@ final class AppModel: ObservableObject {
         }
 
         let created = await createSession(cwd: cwd, command: effectiveCommand, name: nil, env: sessionEnv,
-                                          accountID: accountID == AccountStore.defaultAccountID ? nil : accountID)
+                                          accountID: accountID == AccountStore.defaultAccountID ? nil : accountID,
+                                          initialInput: initialPrompt)
         if var member = newMember, let created {
             member.id = created.id
             meshMembers.append(member)
@@ -702,7 +706,7 @@ final class AppModel: ObservableObject {
     /// nvm, brew…). An empty command opens an interactive shell.
     @discardableResult
     func createSession(cwd: String, command: String, name: String?, env: [String: String] = [:],
-                       accountID: UUID? = nil) async -> SessionInfo? {
+                       accountID: UUID? = nil, initialInput: String? = nil) async -> SessionInfo? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let argv: [String]
         let trimmed = command.trimmingCharacters(in: .whitespaces)
@@ -718,7 +722,8 @@ final class AppModel: ObservableObject {
         do {
             let resp = try await client.call(.createSession(
                 name: name?.isEmpty == true ? nil : name,
-                cwd: cwd, command: argv, env: env, cols: 120, rows: 32
+                cwd: cwd, command: argv, env: env, cols: 120, rows: 32,
+                initialInput: initialInput
             ))
             if case .session(let info) = resp {
                 sessionMetas[info.id] = SessionMeta(baseCommit: baseCommit ?? "HEAD", accountID: accountID)
@@ -793,6 +798,47 @@ final class AppModel: ObservableObject {
               let match = regex.firstMatch(in: command, range: NSRange(command.startIndex..., in: command)),
               let range = Range(match.range(at: 1), in: command) else { return nil }
         return String(command[range])
+    }
+
+    // MARK: - Dispatch & orchestration (V2)
+
+    func saveTemplate(_ template: SessionTemplate) {
+        if let idx = templates.firstIndex(where: { $0.id == template.id }) {
+            templates[idx] = template
+        } else {
+            templates.append(template)
+        }
+        TemplateStore.save(templates)
+    }
+
+    func deleteTemplate(_ template: SessionTemplate) {
+        templates.removeAll { $0.id == template.id }
+        TemplateStore.save(templates)
+    }
+
+    /// Types an objective into running sessions (Enter included).
+    func dispatch(objective: String, to sessionIDs: [String]) async {
+        for id in sessionIDs {
+            _ = try? await client.call(.sendInput(id: id, text: objective))
+        }
+    }
+
+    /// Creates a mesh "chef" session that receives the objective as its
+    /// mission and coordinates the existing peers over talkie-walkie.
+    func createChefSession(project: Project, objective: String) async {
+        let peerRoles = meshMembers.map(\.role) + remotePeers.map(\.role)
+        let mission = """
+        You are the orchestrator of a team of Claude agents connected over the talkie-walkie MCP. \
+        Your peers: \(peerRoles.joined(separator: ", ")). \
+        Break the objective below into tasks, delegate each task to the most suitable peer with send_message, \
+        follow up on their replies, coordinate hand-offs (e.g. implementation then review then tests), \
+        and keep going until the objective is fully met. Finish with a summary of what each agent did. \
+        Objective: \(objective)
+        """
+        await createSession(project: project, destination: .repo, command: "claude",
+                            mcpServerIDs: project.lastMCPServerIDs ?? [],
+                            meshRole: "chef", permissionPreset: .standard,
+                            initialPrompt: mission)
     }
 
     func renameSession(_ id: String, to name: String) async {

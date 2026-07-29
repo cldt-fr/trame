@@ -39,6 +39,10 @@ struct ContentView: View {
             UsagePanelSheet()
                 .environmentObject(model)
         }
+        .sheet(isPresented: $model.showDispatchSheet) {
+            DispatchSheet()
+                .environmentObject(model)
+        }
         .alert("Rename Session", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }
@@ -56,6 +60,15 @@ struct ContentView: View {
             Text("The mesh role is not affected — other agents keep addressing this session the same way.")
         }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    model.showDispatchSheet = true
+                } label: {
+                    Label("Dispatch", systemImage: "paperplane")
+                }
+                .help("Dispatch an objective to your agents")
+                .disabled(model.sessions.filter(\.isRunning).isEmpty && model.projects.isEmpty)
+            }
             ToolbarItem {
                 Button {
                     model.showUsagePanel = true

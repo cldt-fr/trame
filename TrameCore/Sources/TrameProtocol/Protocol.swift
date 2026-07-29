@@ -65,7 +65,11 @@ public struct DaemonInfo: Codable, Sendable {
 public enum DaemonRequest: Codable, Sendable {
     case daemonInfo
     case listSessions
-    case createSession(name: String?, cwd: String, command: [String], env: [String: String], cols: UInt16, rows: UInt16)
+    case createSession(name: String?, cwd: String, command: [String], env: [String: String], cols: UInt16, rows: UInt16,
+                       initialInput: String? = nil)
+    /// Types `text` (plus Enter) into the session's PTY — used to dispatch
+    /// objectives to running agents (V2).
+    case sendInput(id: String, text: String)
     case renameSession(id: String, name: String)
     case resize(id: String, cols: UInt16, rows: UInt16)
     /// Dismisses the attention flag without touching the session.

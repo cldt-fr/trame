@@ -156,6 +156,27 @@ try await client.call(.clearAttention(id: s1.id))
 let dismissed = await waitForSession(client, id: s1.id) { $0.attention == nil }
 step("clearAttention → attention effacée", dismissed)
 
+// --- 2c. Mission initiale + sendInput ---
+
+print("2️⃣c mission initiale et dispatch")
+guard case .session(let s3) = try await client.call(.createSession(
+    name: "mission-test", cwd: workDir, command: ["/bin/zsh", "-c", "echo PROMPT-READY; cat"],
+    env: [:], cols: 80, rows: 24, initialInput: "the-mission"
+)) else {
+    step("createSession mission-test", false)
+    exit(1)
+}
+let outM = OutputCollector()
+let attachM = AttachStream()
+attachM.onData = { outM.append($0) }
+try attachM.attach(socketPath: socketPath, sessionID: s3.id, replay: true)
+step("mission injectée après accalmie", waitFor(timeout: 10) { outM.text.contains("the-mission") }, detail: outM.text)
+
+try await client.call(.sendInput(id: s3.id, text: "dispatched-objective"))
+step("sendInput tapé dans le PTY", waitFor { outM.text.contains("dispatched-objective") }, detail: outM.text)
+attachM.closeStream()
+try await client.call(.removeSession(id: s3.id))
+
 // --- 3. Code de sortie ---
 
 print("3️⃣ session qui se termine (code de sortie)")
