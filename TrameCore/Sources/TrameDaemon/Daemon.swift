@@ -4,7 +4,7 @@ import Foundation
 import TrameProtocol
 
 public final class Daemon {
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 
     private let socketPath: String
     private let queue = DispatchQueue(label: "trame.daemon.main")
@@ -175,10 +175,14 @@ public final class Daemon {
         guard !command.isEmpty else { return .error("empty command") }
         guard FileManager.default.fileExists(atPath: cwd) else { return .error("cwd does not exist: \(cwd)") }
 
+        let id = String(UUID().uuidString.prefix(8)).lowercased()
+
         var childEnv = ProcessInfo.processInfo.environment
         childEnv["TERM"] = "xterm-256color"
         childEnv["COLORTERM"] = "truecolor"
         if childEnv["LANG"] == nil { childEnv["LANG"] = "en_US.UTF-8" }
+        // Lets Claude Code hooks (child processes) report back to this session.
+        childEnv["TRAME_SESSION_ID"] = id
         for (k, v) in env { childEnv[k] = v }
         let envStrings = childEnv.map { "\($0.key)=\($0.value)" }
 
@@ -191,7 +195,6 @@ public final class Daemon {
         }
         guard rc == 0 else { return .error("spawn failed: \(String(cString: strerror(rc)))") }
 
-        let id = String(UUID().uuidString.prefix(8)).lowercased()
         let info = SessionInfo(
             id: id,
             name: name ?? autoName(cwd: cwd),
@@ -203,6 +206,12 @@ public final class Daemon {
         let session = Session(info: info, masterFD: masterFD, pid: pid, queue: queue)
         session.onExit = { [weak self] _ in
             self?.broadcast(.sessionsChanged)
+        }
+        session.onUserInput = { [weak self, weak session] in
+            guard let session else { return }
+            if session.setAttention(nil, message: nil) {
+                self?.broadcast(.sessionsChanged)
+            }
         }
         sessions[id] = session
         session.startReading()
@@ -235,6 +244,27 @@ public final class Daemon {
             conn.sendRaw(data)
         }
         session.attach(conn, replay: attach.replay)
+    }
+
+    // MARK: - Hook events (daemon queue)
+
+    /// Fire-and-forget line sent by a Claude Code hook; maps hook names to the
+    /// session attention state surfaced in the UI.
+    func handle(hookEvent: HookEvent) {
+        guard let session = sessions[hookEvent.sessionID] else { return }
+        let changed: Bool
+        switch hookEvent.event {
+        case "Notification":
+            changed = session.setAttention("permission", message: hookEvent.message)
+        case "Stop":
+            changed = session.setAttention("done", message: nil)
+        default:
+            changed = false
+        }
+        if changed {
+            DaemonLog.log("session \(hookEvent.sessionID) attention → \(session.info.attention ?? "nil")")
+            broadcast(.sessionsChanged)
+        }
     }
 
     // MARK: - Shutdown

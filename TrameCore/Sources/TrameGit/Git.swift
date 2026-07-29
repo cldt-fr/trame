@@ -54,6 +54,12 @@ public enum Git {
         try? run(["branch", "--show-current"], in: root)
     }
 
+    /// Common .git directory (shared across worktrees); nil outside a repo.
+    public static func commonGitDirectory(of path: String) -> String? {
+        guard let dir = try? run(["rev-parse", "--path-format=absolute", "--git-common-dir"], in: path) else { return nil }
+        return dir.isEmpty ? nil : dir
+    }
+
     public static func branchExists(root: String, branch: String) -> Bool {
         (try? run(["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root)) != nil
     }

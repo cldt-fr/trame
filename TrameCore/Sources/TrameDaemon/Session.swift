@@ -67,6 +67,8 @@ final class Session {
             }
         }
         info.state = .exited(code: code)
+        info.attention = nil
+        info.attentionMessage = nil
         DaemonLog.log("session \(info.id) exited with code \(code)")
         onExit?(self)
     }
@@ -75,13 +77,28 @@ final class Session {
         info.name = name
     }
 
+    /// Returns true when the attention state actually changed.
+    func setAttention(_ attention: String?, message: String?) -> Bool {
+        guard info.attention != attention || info.attentionMessage != message else { return false }
+        info.attention = attention
+        info.attentionMessage = message
+        return true
+    }
+
     func resize(cols: UInt16, rows: UInt16) {
         _ = cpty_resize(masterFD, cols, rows)
     }
 
+    /// Called by the daemon when the user typed into the session; clearing the
+    /// attention flag there keeps the two changes on the daemon queue.
+    var onUserInput: (() -> Void)?
+
     func writeInput(_ data: Data) {
         guard info.isRunning else { return }
         _ = FDIO.writeFully(masterFD, data)
+        if info.attention != nil {
+            onUserInput?()
+        }
     }
 
     func signal(_ sig: Int32) {

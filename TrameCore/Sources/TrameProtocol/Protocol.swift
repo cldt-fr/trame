@@ -14,14 +14,23 @@ public struct SessionInfo: Codable, Identifiable, Hashable, Sendable {
     public let command: [String]
     public var state: State
     public let createdAt: Date
+    /// Why the session needs the user (from Claude Code hooks):
+    /// "permission" while waiting for an approval/input, "done" when a turn
+    /// ended. Cleared as soon as the user types into the session.
+    public var attention: String?
+    /// Human-readable detail attached to the attention state.
+    public var attentionMessage: String?
 
-    public init(id: String, name: String, cwd: String, command: [String], state: State, createdAt: Date) {
+    public init(id: String, name: String, cwd: String, command: [String], state: State, createdAt: Date,
+                attention: String? = nil, attentionMessage: String? = nil) {
         self.id = id
         self.name = name
         self.cwd = cwd
         self.command = command
         self.state = state
         self.createdAt = createdAt
+        self.attention = attention
+        self.attentionMessage = attentionMessage
     }
 
     public var isRunning: Bool {
@@ -88,6 +97,32 @@ public struct ServerLine: Codable, Sendable {
         self.id = id
         self.resp = resp
         self.event = event
+    }
+}
+
+// MARK: - Hook channel
+
+/// One-shot line sent by a Claude Code hook (fire and forget, connection
+/// closed right after). `sessionID` comes from the TRAME_SESSION_ID env var
+/// the daemon puts in every session it spawns.
+public struct HookEventLine: Codable, Sendable {
+    public let hookEvent: HookEvent
+
+    public init(hookEvent: HookEvent) {
+        self.hookEvent = hookEvent
+    }
+}
+
+public struct HookEvent: Codable, Sendable {
+    public let sessionID: String
+    /// Claude Code hook name: "Notification", "Stop", …
+    public let event: String
+    public let message: String?
+
+    public init(sessionID: String, event: String, message: String?) {
+        self.sessionID = sessionID
+        self.event = event
+        self.message = message
     }
 }
 

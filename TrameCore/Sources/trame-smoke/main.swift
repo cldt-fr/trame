@@ -118,6 +118,32 @@ try attach2.attach(socketPath: socketPath, sessionID: s1.id, replay: true)
 step("scrollback rejoué (READY + hello)", waitFor { out2.text.contains("READY") && out2.text.contains("hello-trame") }, detail: out2.text)
 attach2.closeStream()
 
+// --- 2b. Événements de hook (attention) ---
+
+print("2️⃣b hooks Claude Code → attention")
+func sendHook(_ event: String, message: String? = nil, sessionID: String) throws {
+    let fd = try connectUnixSocket(path: socketPath)
+    defer { close(fd) }
+    let line = try WireCodec.encodeLine(HookEventLine(hookEvent: HookEvent(sessionID: sessionID, event: event, message: message)))
+    _ = writeAll(fd, line)
+    usleep(100_000)
+}
+
+try sendHook("Notification", message: "Claude needs your permission", sessionID: s1.id)
+let flagged = await waitForSession(client, id: s1.id) { $0.attention == "permission" }
+step("Notification → attention 'permission'", flagged)
+
+let attachClear = AttachStream()
+try attachClear.attach(socketPath: socketPath, sessionID: s1.id, replay: false)
+attachClear.send(Data("\n".utf8))
+let cleared = await waitForSession(client, id: s1.id) { $0.attention == nil }
+step("saisie utilisateur → attention effacée", cleared)
+attachClear.closeStream()
+
+try sendHook("Stop", sessionID: s1.id)
+let done = await waitForSession(client, id: s1.id) { $0.attention == "done" }
+step("Stop → attention 'done'", done)
+
 // --- 3. Code de sortie ---
 
 print("3️⃣ session qui se termine (code de sortie)")

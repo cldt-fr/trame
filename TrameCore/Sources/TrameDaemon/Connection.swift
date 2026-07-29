@@ -75,6 +75,9 @@ final class ClientConnection {
                 daemon.handle(request: request, from: self)
             } else if let attach = try? WireCodec.decoder.decode(AttachRequest.self, from: line) {
                 daemon.handle(attach: attach, from: self)
+            } else if let hook = try? WireCodec.decoder.decode(HookEventLine.self, from: line) {
+                daemon.handle(hookEvent: hook.hookEvent)
+                closeConnection()
             } else {
                 DaemonLog.log("connection \(fd): unrecognized handshake line, closing")
                 closeConnection()

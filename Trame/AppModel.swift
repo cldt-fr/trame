@@ -1,9 +1,12 @@
+import AppKit
 import Combine
 import Foundation
 import SwiftUI
 import TrameClient
+import TrameDaemon
 import TrameGit
 import TrameProtocol
+import UserNotifications
 
 enum SessionDestination: Hashable {
     /// La branche courante, directement dans le repo.
@@ -25,8 +28,14 @@ final class AppModel: ObservableObject {
 
     let client = DaemonClient()
     private var refreshTimer: Timer?
+    /// Last known attention per session, to notify only on transitions.
+    private var knownAttention: [String: String] = [:]
 
     func start() async {
+        // Fire and forget: the permission dialog must not block startup.
+        Task {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        }
         client.onEvent = { [weak self] event in
             Task { @MainActor in
                 if case .sessionsChanged = event {
@@ -58,6 +67,12 @@ final class AppModel: ObservableObject {
                 process.standardError = FileHandle.nullDevice
                 try process.run()
             })
+            // An older daemon speaks an older protocol: restart it. Running
+            // sessions are lost, acceptable while Trame is pre-1.0.
+            if case .info(let info) = try await client.call(.daemonInfo), info.version != Daemon.version {
+                _ = try? await client.request(.shutdown)
+                return // onDisconnect re-enters connect() and respawns
+            }
             daemonConnected = true
             lastError = nil
             await refresh()
@@ -74,7 +89,41 @@ final class AppModel: ObservableObject {
             if selectedSessionID == nil || !list.contains(where: { $0.id == selectedSessionID }) {
                 selectedSessionID = list.first?.id
             }
+            updateAttentionUX()
         }
+    }
+
+    /// Dock badge + macOS notifications on attention transitions (F5.2).
+    private func updateAttentionUX() {
+        var badge = 0
+        for session in sessions where session.isRunning {
+            guard let attention = session.attention else { continue }
+            badge += 1
+            let isNewTransition = knownAttention[session.id] != attention
+            let userIsLookingAtIt = NSApp.isActive && selectedSessionID == session.id
+            if isNewTransition && !userIsLookingAtIt {
+                postNotification(for: session, attention: attention)
+            }
+        }
+        knownAttention = Dictionary(uniqueKeysWithValues: sessions.compactMap { s in
+            s.attention.map { (s.id, $0) }
+        })
+        NSApp.dockTile.badgeLabel = badge > 0 ? "\(badge)" : ""
+    }
+
+    private func postNotification(for session: SessionInfo, attention: String) {
+        let content = UNMutableNotificationContent()
+        content.title = session.name
+        content.body = attention == "done"
+            ? "Claude finished its turn"
+            : (session.attentionMessage?.isEmpty == false ? session.attentionMessage! : "Needs your attention")
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "trame-\(session.id)-\(attention)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     var selectedSession: SessionInfo? {
@@ -170,6 +219,7 @@ final class AppModel: ObservableObject {
         } else {
             argv = [shell, "-l", "-c", trimmed]
         }
+        await Task.detached { HookInstaller.install(in: cwd) }.value
         do {
             let resp = try await client.call(.createSession(
                 name: name?.isEmpty == true ? nil : name,

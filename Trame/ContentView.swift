@@ -194,6 +194,12 @@ struct SessionRow: View {
                 .truncationMode(.middle)
             }
             Spacer()
+            if session.isRunning, let attention = session.attention {
+                Image(systemName: attention == "done" ? "checkmark.circle.fill" : "bell.badge.fill")
+                    .font(.caption)
+                    .foregroundStyle(attention == "done" ? Color.blue : Color.orange)
+                    .help(session.attentionMessage ?? (attention == "done" ? "Claude finished its turn" : "Needs your attention"))
+            }
             if case .exited(let code) = session.state {
                 Text("exit \(code)")
                     .font(.caption2.monospacedDigit())
@@ -227,6 +233,13 @@ struct SessionHeader: View {
                     .truncationMode(.middle)
             }
             Spacer()
+            if session.isRunning, let attention = session.attention, attention != "done" {
+                Label(session.attentionMessage ?? "Needs your attention", systemImage: "bell.badge.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             if session.isRunning {
                 Button("Stop") {
                     Task { await model.stopSession(session.id) }

@@ -18,7 +18,7 @@ public enum DaemonClientError: Error, LocalizedError {
     }
 }
 
-func connectUnixSocket(path: String) throws -> Int32 {
+public func connectUnixSocket(path: String) throws -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { throw DaemonClientError.connectFailed(path) }
     var addr = sockaddr_un()
@@ -45,7 +45,7 @@ func connectUnixSocket(path: String) throws -> Int32 {
     return fd
 }
 
-func writeAll(_ fd: Int32, _ data: Data) -> Bool {
+public func writeAll(_ fd: Int32, _ data: Data) -> Bool {
     var offset = 0
     return data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Bool in
         guard let base = raw.baseAddress else { return true }
